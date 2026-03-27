@@ -13,9 +13,9 @@ pip install jingu-trust-gate
 ## Quick start
 
 ```python
-from jingu_trust_gate import create_harness, HarnessPolicy, Proposal, SupportRef
+from jingu_trust_gate import create_trust_gate, GatePolicy, Proposal, SupportRef
 
-class MyPolicy(HarnessPolicy[MyClaim]):
+class MyPolicy(GatePolicy[MyClaim]):
     def validate_structure(self, proposal): ...
     def bind_support(self, unit, pool): ...
     def evaluate_unit(self, unit_with_support, ctx): ...
@@ -23,9 +23,9 @@ class MyPolicy(HarnessPolicy[MyClaim]):
     def render(self, admitted_units, pool, ctx): ...
     def build_retry_feedback(self, unit_results, ctx): ...
 
-harness = create_harness(policy=MyPolicy())
-result = await harness.admit(proposal, support_pool)
-context = harness.render(result)
+gate = create_trust_gate(policy=MyPolicy())
+result = await gate.admit(proposal, support_pool)
+context = gate.render(result)
 ```
 
 See `examples/medical_symptom_policy.py` for a complete working example.
