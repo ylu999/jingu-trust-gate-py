@@ -41,7 +41,7 @@ def build_audit_entry(
     unit_support_map: dict[str, list[str]],
     retry_attempts: int = 1,
 ) -> AuditEntry:
-    approved = sum(1 for u in all_units if u.status in ("approved", "approved_with_conflict"))
+    approved = sum(1 for u in all_units if u.status == "approved")
     downgraded = sum(1 for u in all_units if u.status == "downgraded")
     rejected = sum(1 for u in all_units if u.status == "rejected")
     conflicts = sum(1 for u in all_units if u.status == "approved_with_conflict")
