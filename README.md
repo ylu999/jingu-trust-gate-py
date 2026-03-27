@@ -401,6 +401,14 @@ The [TypeScript SDK](https://github.com/ylu999/jingu-trust-gate) (`npm install j
 - Full retry loop with typed `RetryFeedback`
 - File audit writer (append-only JSONL)
 
+## The name
+
+*Jingu* (紧箍) is the golden headband from Journey to the West. Sun Wukong — the Monkey King — is the most capable being in the story. He can defeat any enemy and travel 108,000 li in a single somersault. But without Jingu, he acts on his own judgment and cannot be trusted to stay on the path.
+
+Jingu does not limit his power. It ensures his power is used for what he was actually sent to do.
+
+Your LLM is Wukong.
+
 ## License
 
 MIT
