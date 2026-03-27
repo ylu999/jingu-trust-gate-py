@@ -1,6 +1,5 @@
 """
-GateRunner — four-step admission pipeline: validate → bind → evaluate → conflicts → admit.
-Four-step admission pipeline: validate → bind+evaluate → conflicts → admit.
+GateRunner — admission pipeline: validate → bind+evaluate → conflicts → admit.
 """
 
 from __future__ import annotations

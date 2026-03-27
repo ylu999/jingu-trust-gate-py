@@ -46,7 +46,7 @@ class TrustGate(Generic[TUnit]):
         support: list[SupportRef],
     ) -> AdmissionResult[TUnit]:
         """
-        Synchronous admission — runs Gate only, no LLM.
+        Async admission — runs Gate only, no LLM.
         Proposal must already be schema-valid.
         """
         return await self._runner.run(proposal, support)
@@ -101,7 +101,7 @@ def create_trust_gate(
     retry: Optional[RetryConfig] = None,
     extract_content: Optional[Callable] = None,
 ) -> TrustGate:
-    """Convenience constructor Python entry point — matches TypeScript createTrustGate()."""
+    """Convenience constructor — shorthand for TrustGate(TrustGateConfig(...))."""
     return TrustGate(
         TrustGateConfig(
             policy=policy,

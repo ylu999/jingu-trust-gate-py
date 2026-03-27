@@ -133,27 +133,17 @@ class EcommerceCatalogPolicy(GatePolicy[ProductClaim]):
                 stock_range = ref.attributes.get("stockRange")
                 stock_count = ref.attributes.get("stockCount")
                 if stock_range:
-                    if claimed < stock_range["min"] or claimed > stock_range["max"]:
-                        return UnitEvaluationResult(
-                            unit_id=unit.id, decision="downgrade", reason_code="OVER_SPECIFIC_STOCK",
-                            new_grade="derived",
-                            annotations={
-                                "unsupportedAttributes": [f"exact stock count: {claimed}"],
-                                "evidenceRange": stock_range,
-                                "note": "Inventory record exposes a range, not an exact count",
-                            },
-                        )
-                    else:
-                        # within range but still over-specific
-                        return UnitEvaluationResult(
-                            unit_id=unit.id, decision="downgrade", reason_code="OVER_SPECIFIC_STOCK",
-                            new_grade="derived",
-                            annotations={
-                                "unsupportedAttributes": [f"exact stock count: {claimed}"],
-                                "evidenceRange": stock_range,
-                                "note": "Inventory record exposes a range, not an exact count",
-                            },
-                        )
+                    # Inventory exposes a range — any exact count assertion is over-specific,
+                    # regardless of whether it falls within the range.
+                    return UnitEvaluationResult(
+                        unit_id=unit.id, decision="downgrade", reason_code="OVER_SPECIFIC_STOCK",
+                        new_grade="derived",
+                        annotations={
+                            "unsupportedAttributes": [f"exact stock count: {claimed}"],
+                            "evidenceRange": stock_range,
+                            "note": "Inventory record exposes a range, not an exact count",
+                        },
+                    )
                 if stock_count is not None and stock_count != claimed:
                     return UnitEvaluationResult(
                         unit_id=unit.id, decision="downgrade", reason_code="OVER_SPECIFIC_STOCK",

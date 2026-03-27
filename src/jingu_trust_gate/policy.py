@@ -1,6 +1,5 @@
 """
 GatePolicy abstract base class — the interface every policy must implement.
-GatePolicy abstract base class.
 """
 
 from __future__ import annotations
