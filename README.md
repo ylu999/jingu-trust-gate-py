@@ -1,12 +1,16 @@
 # jingu-trust-gate
 
-AI can propose anything. Only verified results are accepted.
+A deterministic admission layer between your LLM and your system. Every claim an LLM proposes is checked against evidence before it is allowed to affect state or trigger actions.
 
 ```
-AI  →  propose  →  verify  →  accept / reject
+LLM output  →  gate.admit()  →  VerifiedContext  →  your system
 ```
+
+Not a guardrails framework. Not output validation. An evidence-grounded admission boundary — deterministic, zero LLM calls, fully audited.
 
 Python SDK for [jingu-trust-gate](https://github.com/ylu999/jingu-trust-gate). Requires Python 3.11+. Zero runtime dependencies.
+
+---
 
 ## Two failure modes that every AI system eventually hits
 
@@ -65,6 +69,32 @@ The gate does not make the model smarter. It makes the system honest about what 
 ```bash
 python demo/demo.py   # full 8-scenario walkthrough
 ```
+
+---
+
+## Where it fits in your stack
+
+```
+Your retrieval system / event source
+            ↓
+      support pool        ← the evidence you have
+            ↓
+       LLM call           ← proposes claims referencing that evidence
+            ↓
+     gate.admit()         ← deterministic, zero LLM, fully audited
+       step 1: validate_structure()  — is the proposal well-formed?
+       step 2: bind_support()        — which evidence applies to each claim?
+       step 3: evaluate_unit()       — does the claim stay within what evidence supports?
+       step 4: detect_conflicts()    — do any claims contradict each other?
+            ↓
+    AdmissionResult       ← every claim labeled: approved / downgraded / rejected
+            ↓
+    VerifiedContext        ← only grounded claims reach downstream
+            ↓
+   Your system / DB / API
+```
+
+All domain logic (what counts as "grounded") lives in your `GatePolicy`. The gate core is a fixed pipeline with zero business logic embedded.
 
 ---
 
@@ -156,6 +186,22 @@ asyncio.run(main())
 2. **Policy is injected, not embedded** — the gate core has zero domain logic. Every business rule lives in your `GatePolicy`. Swap the policy, the gate stays identical.
 
 3. **Every admission is audited** — append-only JSONL at `.jingu-trust-gate/audit.jsonl`. Every claim's fate is on record with its `audit_id`, reason code, and timestamp.
+
+## This is not a guardrails framework
+
+Guardrails frameworks check whether output is **safe or well-formed** — they block toxic content, enforce schemas, detect PII. That is a different problem.
+
+jingu-trust-gate checks whether each **proposal is actually supported by evidence**. It does not care whether output is polite or syntactically valid. It cares whether what the LLM proposes can be proven correct before it becomes system state.
+
+| System | Question it answers | When it runs |
+|--------|---|---|
+| Guardrails AI | Is the output safe? | after generation |
+| NeMo Guardrails | Is the bot on-topic? | at conversation level |
+| RAG / grounding | Did retrieval find relevant docs? | before generation |
+| DeepEval | How often does the model hallucinate? | offline, in eval |
+| **jingu-trust-gate** | **Is this proposal allowed to become state?** | **at every admission, deterministically** |
+
+To our knowledge, existing systems validate outputs, evaluate models, or retrieve evidence — but do not provide a deterministic admission boundary that enforces what claims are allowed to be treated as true at runtime.
 
 ## GatePolicy interface
 
