@@ -191,7 +191,7 @@ Covers all 6 scenarios: happy path, missing evidence, over-specificity, conflict
 
 ## Examples
 
-Five runnable domain policies in `examples/`. Each shows a real scenario and what the gate catches that a plain RAG pipeline would not.
+Eight runnable domain policies in `examples/`. Five cover RAG/data grounding; three show the gate applied to agent steps, tool calls, and irreversible actions.
 
 | File | Domain | Key reason codes |
 |------|--------|-----------------|
@@ -200,6 +200,9 @@ Five runnable domain policies in `examples/`. Each shows a real scenario and wha
 | [`hpc_diagnostic_policy.py`](examples/hpc_diagnostic_policy.py) | GPU cluster SRE | `UNSUPPORTED_SEVERITY`, `UNSUPPORTED_SCOPE`, `OVER_SPECIFIC_METRIC` |
 | [`ecommerce_catalog_policy.py`](examples/ecommerce_catalog_policy.py) | Product chatbot | `UNSUPPORTED_FEATURE`, `OVER_SPECIFIC_STOCK`, `STOCK_CONFLICT` |
 | [`bi_analytics_policy.py`](examples/bi_analytics_policy.py) | BI assistant | `VALUE_MISMATCH`, `PERIOD_MISMATCH`, `DIMENSION_MISMATCH`, `METRIC_CONFLICT` |
+| [`agent_step_policy.py`](examples/agent_step_policy.py) | Research agent steps | `MISSING_CONTEXT`, `INSUFFICIENT_FINDINGS`, `WEAK_JUSTIFICATION`, `REDUNDANT_STEP` |
+| [`tool_call_policy.py`](examples/tool_call_policy.py) | LLM tool call gate | `REDUNDANT_CALL`, `INTENT_NOT_ESTABLISHED`, `WEAK_JUSTIFICATION`, `MISSING_EXPECTED_VALUE` |
+| [`action_gate_policy.py`](examples/action_gate_policy.py) | Irreversible action gate | `CONFIRM_REQUIRED`, `DESTRUCTIVE_WITHOUT_AUTHORIZATION`, `SCOPE_EXCEEDED`, `CONTRADICTORY_ACTIONS` |
 
 ```bash
 python examples/medical_symptom_policy.py
@@ -207,6 +210,9 @@ python examples/legal_contract_policy.py
 python examples/hpc_diagnostic_policy.py
 python examples/ecommerce_catalog_policy.py
 python examples/bi_analytics_policy.py
+python examples/agent_step_policy.py
+python examples/tool_call_policy.py
+python examples/action_gate_policy.py
 ```
 
 ## Three iron laws
@@ -220,6 +226,14 @@ python examples/bi_analytics_policy.py
 The [TypeScript SDK](https://github.com/ylu999/jingu-trust-gate) (`npm install jingu-trust-gate`) is the reference implementation. Both SDKs are API-compatible — the same `GatePolicy` design, same pipeline, same type names.
 
 ## Changelog
+
+### 0.1.8
+- Three new example policies: `agent_step_policy.py` (research agent step gate), `tool_call_policy.py` (LLM tool call gate), `action_gate_policy.py` (irreversible action gate)
+- README: added `SupportRef — not just evidence` section with `source_type` semantics table and code patterns for tool-call, action, and agent-step gates
+- README: expanded examples section to cover all 8 example policies
+
+### 0.1.7
+- `demo/demo.py` added: narrative walkthrough of all 6 scenarios mirroring the TypeScript demo
 
 ### 0.1.6
 - Code quality audit across all source files: fixed stale comments, corrected caller attribution in `GatePolicy` docstrings, improved type precision (`Literal["approved_with_conflict"]`)
