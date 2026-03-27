@@ -84,7 +84,7 @@ class MedicalSymptomPolicy(GatePolicy[SymptomClaim]):
         if unit.grade == "proven" and not uws.support_ids:
             return UnitEvaluationResult(unit_id=unit.id, decision="reject", reason_code="MISSING_EVIDENCE")
 
-        # R4: treatment claims always rejected
+        # R4: treatment claims always rejected (checked before R2/R3 — no evidence required)
         if unit.is_treatment:
             return UnitEvaluationResult(
                 unit_id=unit.id, decision="reject", reason_code="TREATMENT_NOT_ADVISED",

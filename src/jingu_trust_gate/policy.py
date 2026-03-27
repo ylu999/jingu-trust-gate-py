@@ -74,7 +74,7 @@ class GatePolicy(ABC, Generic[TUnit]):
         support_pool: list[SupportRef],
         context: RenderContext,
     ) -> VerifiedContext:
-        """Step 5: render admitted units → VerifiedContext for LLM API input."""
+        """Render admitted units → VerifiedContext for LLM API input. Called by TrustGate.render()."""
 
     @abstractmethod
     def build_retry_feedback(
@@ -82,4 +82,4 @@ class GatePolicy(ABC, Generic[TUnit]):
         unit_results: list[UnitEvaluationResult],
         context: RetryContext,
     ) -> RetryFeedback:
-        """Step 6: build structured retry feedback from gate results."""
+        """Build structured retry feedback from rejected unit results. Called by TrustGate.admit_with_retry()."""

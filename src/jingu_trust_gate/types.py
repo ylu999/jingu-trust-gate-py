@@ -192,7 +192,7 @@ class AuditEntry:
     proposal_kind: ProposalKind
     total_units: int
     approved_count: int
-    downgrade_count: int
+    downgraded_count: int
     rejected_count: int
     conflict_count: int
     unit_support_map: dict[str, list[str]]  # unit_id → support_ids
