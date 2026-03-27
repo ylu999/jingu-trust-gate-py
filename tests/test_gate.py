@@ -111,9 +111,9 @@ def make_proposal(*units: SimpleClaim) -> Proposal[SimpleClaim]:
 
 @pytest.mark.asyncio
 async def test_approve_unit_with_evidence():
-    harness = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
     proposal = make_proposal(SimpleClaim(id="u1", text="hello", grade="proven", evidence_refs=["src-a"]))
-    result = await harness.admit(proposal, make_pool())
+    result = await gate.admit(proposal, make_pool())
     assert len(result.admitted_units) == 1
     assert len(result.rejected_units) == 0
     assert result.admitted_units[0].status == "approved"
@@ -121,18 +121,18 @@ async def test_approve_unit_with_evidence():
 
 @pytest.mark.asyncio
 async def test_reject_proven_unit_with_no_evidence():
-    harness = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
     proposal = make_proposal(SimpleClaim(id="u1", text="no refs", grade="proven", evidence_refs=[]))
-    result = await harness.admit(proposal, make_pool())
+    result = await gate.admit(proposal, make_pool())
     assert len(result.rejected_units) == 1
     assert result.rejected_units[0].evaluation_results[0].reason_code == "MISSING_EVIDENCE"
 
 
 @pytest.mark.asyncio
 async def test_structure_invalid_empty_proposal():
-    harness = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
     proposal = make_proposal()  # no units
-    result = await harness.admit(proposal, [])
+    result = await gate.admit(proposal, [])
     assert len(result.rejected_units) == 0
     assert len(result.admitted_units) == 0
     assert not result.has_conflicts
@@ -147,13 +147,13 @@ async def test_blocking_conflict_force_rejects_both_units():
         severity="blocking",
         description="mutually exclusive",
     )]
-    harness = create_trust_gate(policy=SimplePolicy(conflicts=blocking), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(conflicts=blocking), audit_writer=NoopAuditWriter())
     pool = make_pool()
     proposal = make_proposal(
         SimpleClaim(id="u1", text="claim A", grade="proven", evidence_refs=["src-a"]),
         SimpleClaim(id="u2", text="claim B", grade="proven", evidence_refs=["src-b"]),
     )
-    result = await harness.admit(proposal, pool)
+    result = await gate.admit(proposal, pool)
     assert len(result.admitted_units) == 0
     assert len(result.rejected_units) == 2
     reason_codes = {u.evaluation_results[0].reason_code for u in result.rejected_units}
@@ -168,13 +168,13 @@ async def test_informational_conflict_admits_with_conflict_status():
         sources=[],
         severity="informational",
     )]
-    harness = create_trust_gate(policy=SimplePolicy(conflicts=info), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(conflicts=info), audit_writer=NoopAuditWriter())
     pool = make_pool()
     proposal = make_proposal(
         SimpleClaim(id="u1", text="claim A", grade="proven", evidence_refs=["src-a"]),
         SimpleClaim(id="u2", text="claim B", grade="proven", evidence_refs=["src-b"]),
     )
-    result = await harness.admit(proposal, pool)
+    result = await gate.admit(proposal, pool)
     assert len(result.rejected_units) == 0
     assert all(u.status == "approved_with_conflict" for u in result.admitted_units)
     assert result.has_conflicts
@@ -182,14 +182,14 @@ async def test_informational_conflict_admits_with_conflict_status():
 
 @pytest.mark.asyncio
 async def test_mixed_approve_reject():
-    harness = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
     pool = make_pool()
     proposal = make_proposal(
         SimpleClaim(id="u1", text="ok", grade="proven", evidence_refs=["src-a"]),
         SimpleClaim(id="u2", text="no evidence", grade="proven", evidence_refs=[]),
         SimpleClaim(id="u3", text="derived ok", grade="derived", evidence_refs=[]),
     )
-    result = await harness.admit(proposal, pool)
+    result = await gate.admit(proposal, pool)
     assert len(result.admitted_units) == 2
     assert len(result.rejected_units) == 1
     assert result.rejected_units[0].unit_id == "u2"
@@ -198,20 +198,20 @@ async def test_mixed_approve_reject():
 @pytest.mark.asyncio
 async def test_audit_writer_called():
     writer = NoopAuditWriter()
-    harness = create_trust_gate(policy=SimplePolicy(), audit_writer=writer)
+    gate = create_trust_gate(policy=SimplePolicy(), audit_writer=writer)
     proposal = make_proposal(SimpleClaim(id="u1", text="x", grade="proven", evidence_refs=["src-a"]))
-    await harness.admit(proposal, make_pool())
+    await gate.admit(proposal, make_pool())
     assert len(writer.entries) == 1
     assert writer.entries[0].proposal_id == "prop-1"
 
 
 @pytest.mark.asyncio
 async def test_render_returns_verified_context():
-    harness = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
     pool = make_pool()
     proposal = make_proposal(SimpleClaim(id="u1", text="hello", grade="proven", evidence_refs=["src-a"]))
-    result = await harness.admit(proposal, pool)
-    ctx = harness.render(result, pool)
+    result = await gate.admit(proposal, pool)
+    ctx = gate.render(result, pool)
     assert len(ctx.admitted_blocks) == 1
     assert ctx.admitted_blocks[0].content == "hello"
     assert ctx.summary.rejected == 0
@@ -219,14 +219,14 @@ async def test_render_returns_verified_context():
 
 @pytest.mark.asyncio
 async def test_explain_counts():
-    harness = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=SimplePolicy(), audit_writer=NoopAuditWriter())
     pool = make_pool()
     proposal = make_proposal(
         SimpleClaim(id="u1", text="ok", grade="proven", evidence_refs=["src-a"]),
         SimpleClaim(id="u2", text="no ev", grade="proven", evidence_refs=[]),
     )
-    result = await harness.admit(proposal, pool)
-    exp = harness.explain(result)
+    result = await gate.admit(proposal, pool)
+    exp = gate.explain(result)
     assert exp.total_units == 2
     assert exp.approved == 1
     assert exp.rejected == 1

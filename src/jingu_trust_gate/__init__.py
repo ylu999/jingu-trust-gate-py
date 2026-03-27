@@ -4,7 +4,7 @@ Python SDK: pip install jingu-trust-gate
 """
 
 from .audit import AuditEntry, AuditWriter, FileAuditWriter, create_default_audit_writer
-from .harness import TrustGate, TrustGateConfig, create_trust_gate
+from .trust_gate import TrustGate, TrustGateConfig, create_trust_gate
 from .policy import GatePolicy
 from .types import (
     AdmissionResult,

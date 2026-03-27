@@ -233,7 +233,7 @@ def label(key: str, value: object) -> None:
 
 
 async def main() -> None:
-    harness = create_trust_gate(policy=MedicalSymptomPolicy(), audit_writer=NoopAuditWriter())
+    gate = create_trust_gate(policy=MedicalSymptomPolicy(), audit_writer=NoopAuditWriter())
 
     support_pool = [
         SupportRef(id="ref-001", source_id="symptom-fatigue", source_type="observation",
@@ -265,9 +265,9 @@ async def main() -> None:
         ],
     )
 
-    result = await harness.admit(proposal, support_pool)
-    context = harness.render(result)
-    explanation = harness.explain(result)
+    result = await gate.admit(proposal, support_pool)
+    context = gate.render(result)
+    explanation = gate.explain(result)
 
     sep("Medical Symptom Policy — Admission Result")
 

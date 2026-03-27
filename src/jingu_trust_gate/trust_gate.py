@@ -1,5 +1,5 @@
 """
-Harness — top-level entry point. Port of src/harness.ts.
+TrustGate — top-level entry point. Port of src/trust-gate.ts.
 """
 
 from __future__ import annotations
