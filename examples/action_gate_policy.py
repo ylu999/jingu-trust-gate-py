@@ -37,7 +37,6 @@ from jingu_trust_gate import (
     SupportRef,
     StructureError,
     StructureValidationResult,
-    UnitEvaluationResult,
     UnitWithSupport,
     VerifiedBlock,
     VerifiedContext,
@@ -45,6 +44,9 @@ from jingu_trust_gate import (
     create_trust_gate,
 )
 from jingu_trust_gate.helpers import (
+    approve,
+    reject,
+    first_failing,
     empty_proposal_errors,
     missing_id_errors,
     missing_text_field_errors,
@@ -92,57 +94,58 @@ class ActionGatePolicy(GatePolicy[ActionProposal]):
 
     def evaluate_unit(self, uws: UnitWithSupport[ActionProposal], ctx: dict) -> UnitEvaluationResult:
         unit = uws.unit
+        return first_failing([
+            self._check_intent(uws),
+            self._check_confirmation(uws),
+            self._check_justification(uws),
+            self._check_authorization(uws),
+        ]) or approve(unit.id)
 
-        # R1: intent not established — require a user_intent ref matching the declared source_id
+    def _check_intent(self, uws: UnitWithSupport[ActionProposal]) -> UnitEvaluationResult | None:
+        unit = uws.unit
         has_intent = any(
             s.source_id == unit.user_intent
             for s in filter_support(uws.support_refs, lambda s: s.source_type == "user_intent")
         )
         if not has_intent:
-            return UnitEvaluationResult(
-                unit_id=unit.id, decision="reject", reason_code="INTENT_NOT_ESTABLISHED",
-                annotations={
-                    "note": f"No user_intent support ref with source_id '{unit.user_intent}' is bound. "
-                            "Action must be traceable to an explicit user request.",
-                },
+            return reject(
+                unit.id, "INTENT_NOT_ESTABLISHED",
+                note=f"No user_intent support ref with source_id '{unit.user_intent}' is bound. "
+                     "Action must be traceable to an explicit user request.",
             )
+        return None
 
-        # R2: irreversible action requires explicit confirmation
-        if not unit.is_reversible:
-            if not has_support_type(uws.support_refs, "user_confirmation"):
-                return UnitEvaluationResult(
-                    unit_id=unit.id, decision="reject", reason_code="CONFIRM_REQUIRED",
-                    annotations={
-                        "note": f"Action '{unit.action_name}' is irreversible. "
-                                "A user_confirmation support ref is required before execution.",
-                        "actionName": unit.action_name,
-                    },
-                )
+    def _check_confirmation(self, uws: UnitWithSupport[ActionProposal]) -> UnitEvaluationResult | None:
+        unit = uws.unit
+        if not unit.is_reversible and not has_support_type(uws.support_refs, "user_confirmation"):
+            return reject(
+                unit.id, "CONFIRM_REQUIRED",
+                note=f"Action '{unit.action_name}' is irreversible. "
+                     "A user_confirmation support ref is required before execution.",
+                actionName=unit.action_name,
+            )
+        return None
 
-        # R3: weak justification
+    def _check_justification(self, uws: UnitWithSupport[ActionProposal]) -> UnitEvaluationResult | None:
+        unit = uws.unit
         if len(unit.justification.strip()) < 30:
-            return UnitEvaluationResult(
-                unit_id=unit.id, decision="reject", reason_code="WEAK_JUSTIFICATION",
-                annotations={
-                    "note": f"Justification too vague ({len(unit.justification.strip())} chars). "
-                            "Provide at least 30 characters explaining why this action is necessary.",
-                },
+            return reject(
+                unit.id, "WEAK_JUSTIFICATION",
+                note=f"Justification too vague ({len(unit.justification.strip())} chars). "
+                     "Provide at least 30 characters explaining why this action is necessary.",
             )
+        return None
 
-        # R4: high-risk action requires explicit authorization
-        if unit.risk_level == "high":
-            if not has_support_type(uws.support_refs, "authorization"):
-                return UnitEvaluationResult(
-                    unit_id=unit.id, decision="reject",
-                    reason_code="DESTRUCTIVE_WITHOUT_AUTHORIZATION",
-                    annotations={
-                        "note": f"High-risk action '{unit.action_name}' requires an authorization ref. "
-                                "Add an 'authorization' support ref to proceed.",
-                        "riskLevel": unit.risk_level,
-                    },
-                )
-
-        return UnitEvaluationResult(unit_id=unit.id, decision="approve", reason_code="OK")
+    def _check_authorization(self, uws: UnitWithSupport[ActionProposal]) -> UnitEvaluationResult | None:
+        unit = uws.unit
+        if unit.risk_level == "high" and not has_support_type(uws.support_refs, "authorization"):
+            return reject(
+                unit.id, "DESTRUCTIVE_WITHOUT_AUTHORIZATION",
+                note=f"High-risk action '{unit.action_name}' requires an authorization ref. "
+                     "Add an 'authorization' support ref to proceed.",
+                riskLevel=unit.risk_level,
+            )
+        return None
 
     def detect_conflicts(
         self, units: list[UnitWithSupport[ActionProposal]], pool: list[SupportRef]

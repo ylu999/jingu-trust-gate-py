@@ -33,7 +33,6 @@ from jingu_trust_gate import (
     SupportRef,
     StructureError,
     StructureValidationResult,
-    UnitEvaluationResult,
     UnitWithSupport,
     VerifiedBlock,
     VerifiedContext,
@@ -41,6 +40,10 @@ from jingu_trust_gate import (
     create_trust_gate,
 )
 from jingu_trust_gate.helpers import (
+    approve,
+    reject,
+    downgrade,
+    first_failing,
     empty_proposal_errors,
     missing_id_errors,
     missing_text_field_errors,
@@ -79,53 +82,54 @@ class ToolCallPolicy(GatePolicy[ToolCallProposal]):
         matched = [s for s in pool if s.source_id in unit.evidence_refs]
         return UnitWithSupport(unit=unit, support_ids=[s.id for s in matched], support_refs=matched)
 
-    def evaluate_unit(self, uws: UnitWithSupport[ToolCallProposal], ctx: dict) -> UnitEvaluationResult:
+    def evaluate_unit(self, uws: UnitWithSupport[ToolCallProposal], ctx: dict):
         unit = uws.unit
+        return first_failing([
+            self._check_intent(uws),
+            self._check_redundant(uws),
+            self._check_justification(uws),
+            self._check_expected_value(uws),
+        ]) or approve(unit.id)
 
-        # R2: intent not established — check for user_query in bound support refs
+    def _check_intent(self, uws: UnitWithSupport[ToolCallProposal]):
         if not has_support_type(uws.support_refs, "user_query"):
-            return UnitEvaluationResult(
-                unit_id=unit.id, decision="reject", reason_code="INTENT_NOT_ESTABLISHED",
-                annotations={
-                    "note": "No user_query support ref bound to this tool call. "
-                            "Tool calls must be justified by a stated user intent.",
-                },
+            return reject(
+                uws.unit.id, "INTENT_NOT_ESTABLISHED",
+                note="No user_query support ref bound to this tool call. "
+                     "Tool calls must be justified by a stated user intent.",
             )
+        return None
 
-        # R3: redundant call — tool_name + arguments key already called (tracked via support attrs)
+    def _check_redundant(self, uws: UnitWithSupport[ToolCallProposal]):
+        unit = uws.unit
         call_sig = f"{unit.tool_name}::{sorted(unit.arguments.items())}"
         for s in uws.support_refs:
             if s.attributes.get("call_signature") == call_sig:
-                return UnitEvaluationResult(
-                    unit_id=unit.id, decision="reject", reason_code="REDUNDANT_CALL",
-                    annotations={
-                        "note": f"Tool call {unit.tool_name}({unit.arguments}) was already executed.",
-                        "priorCallRef": s.source_id,
-                    },
+                return reject(
+                    unit.id, "REDUNDANT_CALL",
+                    note=f"Tool call {unit.tool_name}({unit.arguments}) was already executed.",
+                    priorCallRef=s.source_id,
                 )
+        return None
 
-        # R1: weak justification
+    def _check_justification(self, uws: UnitWithSupport[ToolCallProposal]):
+        unit = uws.unit
         if len(unit.justification.strip()) < 20:
-            return UnitEvaluationResult(
-                unit_id=unit.id, decision="downgrade", reason_code="WEAK_JUSTIFICATION",
-                new_grade="speculative",
-                annotations={
-                    "note": f"Justification too vague ({len(unit.justification.strip())} chars). "
-                            "Provide at least 20 characters.",
-                },
+            return downgrade(
+                unit.id, "WEAK_JUSTIFICATION", "speculative",
+                note=f"Justification too vague ({len(unit.justification.strip())} chars). "
+                     "Provide at least 20 characters.",
             )
+        return None
 
-        # R4: missing expected value
+    def _check_expected_value(self, uws: UnitWithSupport[ToolCallProposal]):
+        unit = uws.unit
         if not unit.expected_value or not unit.expected_value.strip():
-            return UnitEvaluationResult(
-                unit_id=unit.id, decision="downgrade", reason_code="MISSING_EXPECTED_VALUE",
-                new_grade="derived",
-                annotations={
-                    "note": "No expected_value declared. Specify what you expect this tool call to return.",
-                },
+            return downgrade(
+                unit.id, "MISSING_EXPECTED_VALUE", "derived",
+                note="No expected_value declared. Specify what you expect this tool call to return.",
             )
-
-        return UnitEvaluationResult(unit_id=unit.id, decision="approve", reason_code="OK")
+        return None
 
     def detect_conflicts(
         self, units: list[UnitWithSupport[ToolCallProposal]], pool: list[SupportRef]

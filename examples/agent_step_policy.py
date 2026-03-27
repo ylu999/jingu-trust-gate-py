@@ -35,7 +35,6 @@ from jingu_trust_gate import (
     SupportRef,
     StructureError,
     StructureValidationResult,
-    UnitEvaluationResult,
     UnitWithSupport,
     VerifiedBlock,
     VerifiedContext,
@@ -43,6 +42,10 @@ from jingu_trust_gate import (
     create_trust_gate,
 )
 from jingu_trust_gate.helpers import (
+    approve,
+    reject,
+    downgrade,
+    first_failing,
     empty_proposal_errors,
     missing_id_errors,
     missing_text_field_errors,
@@ -81,39 +84,45 @@ class AgentStepPolicy(GatePolicy[AgentStepProposal]):
         matched = [s for s in pool if s.source_id in unit.required_context]
         return UnitWithSupport(unit=unit, support_ids=[s.id for s in matched], support_refs=matched)
 
-    def evaluate_unit(self, uws: UnitWithSupport[AgentStepProposal], ctx: dict) -> UnitEvaluationResult:
+    def evaluate_unit(self, uws: UnitWithSupport[AgentStepProposal], ctx: dict):
         unit = uws.unit
+        return first_failing([
+            self._check_context(uws),
+            self._check_findings(uws),
+            self._check_justification(uws),
+        ]) or approve(unit.id)
 
-        # R1: all required_context items must be satisfied by at least one support ref
+    def _check_context(self, uws: UnitWithSupport[AgentStepProposal]):
+        unit = uws.unit
         if unit.required_context:
             satisfied = {s.source_id for s in uws.support_refs}
             missing = [k for k in unit.required_context if k not in satisfied]
             if missing:
-                return UnitEvaluationResult(
-                    unit_id=unit.id, decision="reject", reason_code="MISSING_CONTEXT",
-                    annotations={"missingContext": missing,
-                                 "note": f"Required context not available: {', '.join(missing)}"},
+                return reject(
+                    unit.id, "MISSING_CONTEXT",
+                    note=f"Required context not available: {', '.join(missing)}",
+                    missingContext=missing,
                 )
+        return None
 
-        # R2: grade=proven with no support at all
+    def _check_findings(self, uws: UnitWithSupport[AgentStepProposal]):
+        unit = uws.unit
         if unit.grade == "proven" and not uws.support_ids:
-            return UnitEvaluationResult(
-                unit_id=unit.id, decision="reject", reason_code="INSUFFICIENT_FINDINGS",
-                annotations={"note": "Step graded 'proven' but no supporting findings are bound"},
+            return reject(
+                unit.id, "INSUFFICIENT_FINDINGS",
+                note="Step graded 'proven' but no supporting findings are bound",
             )
+        return None
 
-        # R3: justification too short
+    def _check_justification(self, uws: UnitWithSupport[AgentStepProposal]):
+        unit = uws.unit
         if len(unit.justification.strip()) < 20:
-            return UnitEvaluationResult(
-                unit_id=unit.id, decision="downgrade", reason_code="WEAK_JUSTIFICATION",
-                new_grade="speculative",
-                annotations={
-                    "note": f"Justification too vague ({len(unit.justification.strip())} chars). "
-                            "Provide at least 20 characters explaining why this step is needed.",
-                },
+            return downgrade(
+                unit.id, "WEAK_JUSTIFICATION", "speculative",
+                note=f"Justification too vague ({len(unit.justification.strip())} chars). "
+                     "Provide at least 20 characters explaining why this step is needed.",
             )
-
-        return UnitEvaluationResult(unit_id=unit.id, decision="approve", reason_code="OK")
+        return None
 
     def detect_conflicts(
         self, units: list[UnitWithSupport[AgentStepProposal]], pool: list[SupportRef]
