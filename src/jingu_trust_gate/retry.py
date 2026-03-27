@@ -8,7 +8,7 @@ from typing import Awaitable, Callable, Generic, Optional, TypeVar
 
 from .audit import AuditWriter
 from .gate import GateRunner
-from .policy import HarnessPolicy
+from .policy import GatePolicy
 from .types import (
     AdmissionResult,
     Proposal,
@@ -33,7 +33,7 @@ _DEFAULT_RETRY_CONFIG = RetryConfig(max_retries=3, retry_on_decisions=["reject"]
 async def run_with_retry(
     invoker: LLMInvoker,
     support: list[SupportRef],
-    policy: HarnessPolicy,
+    policy: GatePolicy,
     prompt: str,
     config: Optional[RetryConfig] = None,
     audit_writer: Optional[AuditWriter] = None,
@@ -90,7 +90,7 @@ def _needs_retry(
 
 def _build_feedback(
     result: AdmissionResult,
-    policy: HarnessPolicy,
+    policy: GatePolicy,
     attempt: int,
     cfg: RetryConfig,
 ) -> RetryFeedback:

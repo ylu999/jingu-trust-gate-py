@@ -142,7 +142,7 @@ class RenderContext:
 
 
 @dataclass
-class HarnessExplanation:
+class GateExplanation:
     total_units: int
     approved: int
     downgraded: int

@@ -25,7 +25,7 @@ from jingu_trust_gate import (
     AuditEntry,
     AuditWriter,
     ConflictAnnotation,
-    HarnessPolicy,
+    GatePolicy,
     Proposal,
     RenderContext,
     RetryContext,
@@ -39,7 +39,7 @@ from jingu_trust_gate import (
     VerifiedBlock,
     VerifiedContext,
     VerifiedContextSummary,
-    create_harness,
+    create_trust_gate,
 )
 
 # ── Domain types ───────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ class SymptomClaim:
 
 # ── Policy ─────────────────────────────────────────────────────────────────────
 
-class MedicalSymptomPolicy(HarnessPolicy[SymptomClaim]):
+class MedicalSymptomPolicy(GatePolicy[SymptomClaim]):
 
     def validate_structure(self, proposal: Proposal[SymptomClaim]) -> StructureValidationResult:
         errors: list[StructureError] = []
@@ -233,7 +233,7 @@ def label(key: str, value: object) -> None:
 
 
 async def main() -> None:
-    harness = create_harness(policy=MedicalSymptomPolicy(), audit_writer=NoopAuditWriter())
+    harness = create_trust_gate(policy=MedicalSymptomPolicy(), audit_writer=NoopAuditWriter())
 
     support_pool = [
         SupportRef(id="ref-001", source_id="symptom-fatigue", source_type="observation",

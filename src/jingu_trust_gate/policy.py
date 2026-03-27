@@ -1,5 +1,5 @@
 """
-HarnessPolicy abstract base class — the interface every policy must implement.
+GatePolicy abstract base class — the interface every policy must implement.
 Port of src/types/policy.ts.
 """
 
@@ -25,7 +25,7 @@ from .types import (
 TUnit = TypeVar("TUnit")
 
 
-class HarnessPolicy(ABC, Generic[TUnit]):
+class GatePolicy(ABC, Generic[TUnit]):
     """
     Policy interface — implement all 6 methods to define admission logic.
 

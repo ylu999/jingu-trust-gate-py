@@ -9,11 +9,11 @@ from typing import Callable, Generic, Optional, TypeVar
 
 from .audit import AuditWriter, create_default_audit_writer
 from .gate import GateRunner
-from .policy import HarnessPolicy
+from .policy import GatePolicy
 from .retry import LLMInvoker, run_with_retry
 from .types import (
     AdmissionResult,
-    HarnessExplanation,
+    GateExplanation,
     Proposal,
     RenderContext,
     RetryConfig,
@@ -25,16 +25,16 @@ TUnit = TypeVar("TUnit")
 
 
 @dataclass
-class HarnessConfig(Generic[TUnit]):
-    policy: HarnessPolicy[TUnit]
+class TrustGateConfig(Generic[TUnit]):
+    policy: GatePolicy[TUnit]
     audit_writer: Optional[AuditWriter] = None
     retry: Optional[RetryConfig] = None
     # Optional: how to extract content from TUnit for base renderer
     extract_content: Optional[Callable[[object, list[SupportRef]], str]] = None
 
 
-class Harness(Generic[TUnit]):
-    def __init__(self, config: HarnessConfig[TUnit]) -> None:
+class TrustGate(Generic[TUnit]):
+    def __init__(self, config: TrustGateConfig[TUnit]) -> None:
         self._policy = config.policy
         self._audit_writer = config.audit_writer or create_default_audit_writer()
         self._retry = config.retry
@@ -90,20 +90,20 @@ class Harness(Generic[TUnit]):
         ctx.summary.rejected = len(result.rejected_units)
         return ctx
 
-    def explain(self, result: AdmissionResult[TUnit]) -> HarnessExplanation:
+    def explain(self, result: AdmissionResult[TUnit]) -> GateExplanation:
         """Read-only summary of admission result."""
         return _explain_result(result)
 
 
-def create_harness(
-    policy: HarnessPolicy,
+def create_trust_gate(
+    policy: GatePolicy,
     audit_writer: Optional[AuditWriter] = None,
     retry: Optional[RetryConfig] = None,
     extract_content: Optional[Callable] = None,
-) -> Harness:
-    """Convenience constructor matching the TypeScript createHarness() API."""
-    return Harness(
-        HarnessConfig(
+) -> TrustGate:
+    """Convenience constructor Python entry point — matches TypeScript createTrustGate()."""
+    return TrustGate(
+        TrustGateConfig(
             policy=policy,
             audit_writer=audit_writer,
             retry=retry,
@@ -112,14 +112,14 @@ def create_harness(
     )
 
 
-def _explain_result(result: AdmissionResult) -> HarnessExplanation:
+def _explain_result(result: AdmissionResult) -> GateExplanation:
     all_units = result.admitted_units + result.rejected_units
     reason_codes: set[str] = set()
     for unit in all_units:
         for ev in unit.evaluation_results:
             reason_codes.add(ev.reason_code)
 
-    return HarnessExplanation(
+    return GateExplanation(
         total_units=len(all_units),
         approved=sum(1 for u in result.admitted_units if u.status == "approved"),
         downgraded=sum(1 for u in result.admitted_units if u.status == "downgraded"),

@@ -4,13 +4,13 @@ Python SDK: pip install jingu-trust-gate
 """
 
 from .audit import AuditEntry, AuditWriter, FileAuditWriter, create_default_audit_writer
-from .harness import Harness, HarnessConfig, create_harness
-from .policy import HarnessPolicy
+from .harness import TrustGate, TrustGateConfig, create_trust_gate
+from .policy import GatePolicy
 from .types import (
     AdmissionResult,
     AdmittedUnit,
     ConflictAnnotation,
-    HarnessExplanation,
+    GateExplanation,
     Proposal,
     RenderContext,
     RetryConfig,
@@ -31,11 +31,11 @@ __version__ = "0.1.0"
 
 __all__ = [
     # Harness
-    "create_harness",
-    "Harness",
-    "HarnessConfig",
+    "create_trust_gate",
+    "TrustGate",
+    "TrustGateConfig",
     # Policy
-    "HarnessPolicy",
+    "GatePolicy",
     # Types
     "Proposal",
     "SupportRef",
@@ -50,7 +50,7 @@ __all__ = [
     "VerifiedContext",
     "VerifiedContextSummary",
     "RenderContext",
-    "HarnessExplanation",
+    "GateExplanation",
     "RetryFeedback",
     "RetryError",
     "RetryConfig",

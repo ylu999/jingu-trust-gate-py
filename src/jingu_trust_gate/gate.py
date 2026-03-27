@@ -9,7 +9,7 @@ import uuid
 from typing import Generic, Optional, TypeVar
 
 from .audit import AuditWriter, build_audit_entry
-from .policy import HarnessPolicy
+from .policy import GatePolicy
 from .types import (
     AdmissionResult,
     AdmittedUnit,
@@ -27,7 +27,7 @@ TUnit = TypeVar("TUnit")
 class GateRunner(Generic[TUnit]):
     def __init__(
         self,
-        policy: HarnessPolicy[TUnit],
+        policy: GatePolicy[TUnit],
         audit_writer: Optional[AuditWriter] = None,
     ) -> None:
         self._policy = policy
