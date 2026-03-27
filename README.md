@@ -66,7 +66,7 @@ The two hallucinated facts are blocked at the boundary. They are never stored. T
 
 The gate does not make the model smarter. It makes the system honest about what it actually knows.
 
-![jingu-trust-gate demo](https://raw.githubusercontent.com/ylu999/jingu-trust-gate/main/demo/demo.gif)
+![jingu-trust-gate demo](./demo/aha-moment-demo.gif)
 
 ```bash
 # clone the repo to run demos
