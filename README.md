@@ -135,6 +135,16 @@ class MyAdapter(ContextAdapter[list[dict]]):
 
 Reference implementations for Claude, OpenAI, and Gemini are in [`examples/adapter_examples.py`](examples/adapter_examples.py).
 
+## Narrative demo
+
+A self-contained walkthrough of the full pipeline — same domain (household memory assistant) used in the TypeScript reference demo:
+
+```bash
+python demo/demo.py
+```
+
+Covers all 6 scenarios: happy path, missing evidence, over-specificity, conflict detection (informational + blocking), semantic retry loop, and all three adapters (Claude / OpenAI / Gemini).
+
 ## Examples
 
 Five runnable domain policies in `examples/`. Each shows a real scenario and what the gate catches that a plain RAG pipeline would not.
