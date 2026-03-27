@@ -1522,6 +1522,262 @@ async def scenario7() -> None:
 
 
 # ===========================================================================
+# Scenario 8: Preventing Memory Corruption — State Drift
+# ===========================================================================
+#
+# This is the hero scenario.
+#
+# Every other scenario shows the gate catching a bad response or blocking
+# an unauthorized action — errors that affect one turn. This scenario shows
+# the deeper failure mode: incorrect inferences written into persistent
+# state, where they become "facts" that corrupt every future interaction.
+#
+# The gate is the last line before system state. Nothing wrong gets in.
+
+@dataclass
+class MemoryWrite:
+    id: str
+    key: str       # memory key, e.g. "milk_stock", "user_prefers_brand"
+    value: str     # proposed value
+    grade: str     # "stated" | "inferred"
+    evidence_refs: list[str] = field(default_factory=list)
+
+
+class StateDriftPolicy(GatePolicy):
+    def validate_structure(self, proposal: Proposal) -> StructureValidationResult:
+        if len(proposal.units) == 0:
+            return StructureValidationResult(
+                valid=False,
+                errors=[StructureError(field="units", reason_code="EMPTY_UNITS")],
+            )
+        return StructureValidationResult(valid=True, errors=[])
+
+    def bind_support(self, unit: MemoryWrite, pool: list[SupportRef]) -> UnitWithSupport:
+        matched = [s for s in pool if s.source_id in unit.evidence_refs]
+        return UnitWithSupport(unit=unit, support_ids=[s.id for s in matched], support_refs=matched)
+
+    def evaluate_unit(self, uws: UnitWithSupport, ctx) -> UnitEvaluationResult:
+        unit: MemoryWrite = uws.unit
+
+        # R1: must have at least one user_statement in evidence pool
+        has_user_statement = any(s.source_type == "user_statement" for s in uws.support_refs)
+        if not has_user_statement:
+            return reject(
+                unit.id,
+                "INFERRED_NOT_STATED",
+                note=f'"{unit.key}" was not stated by the user — it was inferred by the model',
+            )
+
+        # R2: value must appear verbatim in a user statement; otherwise downgrade to "inferred"
+        verbatim_match = any(
+            s.source_type == "user_statement" and
+            isinstance(s.attributes.get("content"), str) and
+            unit.value.lower() in s.attributes["content"].lower()
+            for s in uws.support_refs
+        )
+        if not verbatim_match:
+            return downgrade(
+                unit.id,
+                "VALUE_NOT_VERBATIM",
+                "inferred",
+                note=f'"{unit.value}" is not verbatim in the user statement — stored as inferred, not stated',
+            )
+
+        return approve(unit.id)
+
+    def detect_conflicts(self, units: list[UnitWithSupport], pool: list[SupportRef]) -> list[ConflictAnnotation]:
+        return []
+
+    def render(self, admitted_units: list[AdmittedUnit], pool: list[SupportRef], ctx: RenderContext) -> VerifiedContext:
+        blocks = [
+            VerifiedBlock(
+                source_id=u.unit_id,
+                content=f'{u.unit.key} = "{u.unit.value}"  [{u.status}]',
+                grade=u.unit.grade,
+            )
+            for u in admitted_units
+        ]
+        return VerifiedContext(
+            admitted_blocks=blocks,
+            summary=VerifiedContextSummary(admitted=len(blocks), rejected=0, conflicts=0),
+            instructions="Write only the verified facts below to system state. Rejected writes must not be stored.",
+        )
+
+    def build_retry_feedback(self, unit_results: list[UnitEvaluationResult], ctx: RetryContext) -> RetryFeedback:
+        failed = [r for r in unit_results if r.decision == "reject"]
+        return RetryFeedback(
+            summary=f"{len(failed)} write(s) blocked — not grounded in user statements",
+            errors=[
+                RetryError(
+                    unit_id=r.unit_id,
+                    reason_code=r.reason_code,
+                    details={"hint": "Only write facts the user explicitly stated, not what you inferred"},
+                )
+                for r in failed
+            ],
+        )
+
+
+async def scenario8() -> None:
+    sep("Scenario 8: Preventing Memory Corruption — State Drift")
+    print()
+    explain("This is the state gating pattern. The gate does not check a response or an action — it controls what is allowed to enter persistent system state. Once incorrect information is written to state, it becomes a permanent 'fact' that poisons every future retrieval, recommendation, and decision.")
+    print()
+
+    # ── The problem ──────────────────────────────────────────────────────────
+
+    subsep("THE PROBLEM — What happens without a gate")
+    print()
+    print("  User says: \"We're running low on milk\"")
+    print()
+    print("  LLM proposes 3 memory writes:")
+    print("    write-1: milk_stock         = \"low\"    grade=stated    (grounded ✓)")
+    print("    write-2: user_prefers_brand = \"Oatly\"  grade=inferred  (hallucinated ✗)")
+    print("    write-3: weekly_budget      = \"$50\"    grade=inferred  (hallucinated ✗)")
+    print()
+    print("  ❌  Without a gate, all 3 writes reach the database.")
+    print()
+    print("  Now the system 'knows':")
+    print("    — user prefers Oatly (never said)")
+    print("    — weekly budget is $50 (never said)")
+    print()
+    print("  These become the ground truth for:")
+    print("    — future shopping recommendations  (wrong brand every time)")
+    print("    — auto-generated shopping lists    (filtered by wrong budget)")
+    print("    — every RAG retrieval that follows")
+    print()
+    print("  The model made two guesses. Both became permanent system facts.")
+    print("  The system is now drifting away from reality.")
+    print("  There is no automatic correction. Every future interaction inherits the error.")
+
+    # ── Support pool ─────────────────────────────────────────────────────────
+
+    subsep("WITH THE GATE — Evidence pool")
+    print()
+    print("  One user statement in pool:")
+    print("    stmt-1: source_type=user_statement  content=\"We're running low on milk\"")
+    print("    (nothing about brand, nothing about budget)")
+
+    evidence_pool: list[SupportRef] = [
+        SupportRef(
+            id="ref-stmt-1",
+            source_id="stmt-1",
+            source_type="user_statement",
+            attributes={"content": "We're running low on milk"},
+        ),
+    ]
+
+    # ── Proposal ─────────────────────────────────────────────────────────────
+
+    proposal = Proposal(
+        id="prop-memory-001",
+        kind="mutation",
+        units=[
+            # write-1: grounded — "low" appears in the user statement → approve
+            MemoryWrite(
+                id="write-1",
+                key="milk_stock",
+                value="low",
+                grade="stated",
+                evidence_refs=["stmt-1"],
+            ),
+            # write-2: no user statement mentions "Oatly" → INFERRED_NOT_STATED → reject
+            MemoryWrite(
+                id="write-2",
+                key="user_prefers_brand",
+                value="Oatly",
+                grade="inferred",
+                evidence_refs=[],
+            ),
+            # write-3: no user statement mentions "$50" → INFERRED_NOT_STATED → reject
+            MemoryWrite(
+                id="write-3",
+                key="weekly_budget",
+                value="$50",
+                grade="inferred",
+                evidence_refs=[],
+            ),
+        ],
+    )
+
+    # ── Gate execution ───────────────────────────────────────────────────────
+
+    subsep("GATE EXECUTION")
+    print()
+    print("  Step 1 — validate_structure(): 3 writes  → valid")
+    print("  Step 2 — bind_support():")
+    print("            write-1 evidence_refs=[stmt-1]  → matched ref-stmt-1")
+    print("            write-2 evidence_refs=[]        → no support")
+    print("            write-3 evidence_refs=[]        → no support")
+    print("  Step 3 — evaluate_unit():")
+    print("            write-1: has user_statement, value 'low' in content  → approve")
+    print("            write-2: no user_statement                           → INFERRED_NOT_STATED → reject")
+    print("            write-3: no user_statement                           → INFERRED_NOT_STATED → reject")
+
+    gate = create_trust_gate(policy=StateDriftPolicy(), audit_writer=NoopAuditWriter())
+    result = await gate.admit(proposal, evidence_pool)
+    context = gate.render(result)
+    expl = gate.explain(result)
+
+    # ── Output ───────────────────────────────────────────────────────────────
+
+    subsep("OUTPUT — What reaches system state")
+    print()
+    print("  ✅  Admitted (written to memory store):")
+    for b in context.admitted_blocks:
+        label(f"    {b.source_id}", b.content)
+    print()
+    print("  ❌  Rejected (never reach storage):")
+    for u in result.rejected_units:
+        ann = u.evaluation_results[0].annotations if u.evaluation_results else {}
+        label(f"    {u.unit_id}  [{u.evaluation_results[0].reason_code if u.evaluation_results else '?'}]", u.unit.key)
+        if ann.get("note"):
+            label("      note", ann["note"])
+    print()
+    label("  approved", expl.approved)
+    label("  rejected", expl.rejected)
+    print()
+    print("  VerifiedContext.instructions:")
+    print(f'    "{context.instructions}"')
+
+    # ── The point ─────────────────────────────────────────────────────────────
+
+    print()
+    subsep("WHY THIS MATTERS")
+    print()
+    explain("Without a gate: incorrect inferences become permanent system facts. Every future interaction that retrieves this state inherits the error. The model made two guesses in one turn — and both would have been stored as ground truth forever.")
+    print()
+    explain("With the gate: only milk_stock = \"low\" reaches the database. The two hallucinated facts never exist in state. The system cannot drift from the user's actual reality.")
+    print()
+    print("  The structural difference:")
+    print()
+    print("    Without gate:  LLM output → system state")
+    print("    With gate:     LLM output → gate (deterministic check) → system state")
+    print()
+    print("  The gate does not make the LLM smarter.")
+    print("  It makes the system's memory honest.")
+
+    # ── Assertions ────────────────────────────────────────────────────────────
+
+    assert expl.approved == 1, f"expected 1 approved, got {expl.approved}"
+    assert expl.rejected == 2, f"expected 2 rejected, got {expl.rejected}"
+    assert any(u.unit_id == "write-1" for u in result.admitted_units)
+    assert any(u.unit_id == "write-2" for u in result.rejected_units)
+    assert any(u.unit_id == "write-3" for u in result.rejected_units)
+    rej2 = next(u for u in result.rejected_units if u.unit_id == "write-2")
+    rej3 = next(u for u in result.rejected_units if u.unit_id == "write-3")
+    assert rej2.evaluation_results[0].reason_code == "INFERRED_NOT_STATED"
+    assert rej3.evaluation_results[0].reason_code == "INFERRED_NOT_STATED"
+
+    print()
+    pass_("write-1 (milk_stock = \"low\") approved — verbatim in user statement")
+    pass_("write-2 (user_prefers_brand = \"Oatly\") rejected — INFERRED_NOT_STATED")
+    pass_("write-3 (weekly_budget = \"$50\") rejected — INFERRED_NOT_STATED")
+    pass_("system state contains only what the user actually said")
+    pass_("two hallucinated facts blocked before reaching the database")
+
+
+# ===========================================================================
 # Main
 # ===========================================================================
 
@@ -1535,10 +1791,11 @@ async def main() -> None:
     await scenario5()
     await scenario6()
     await scenario7()
+    await scenario8()
 
     print_patterns_and_anti_patterns()
 
-    sep("ALL 7 SCENARIOS PASSED")
+    sep("ALL 8 SCENARIOS PASSED")
     print()
     print("  Scenarios:")
     print("    1. Happy Path               — zero friction, full pipeline printed")
@@ -1549,6 +1806,7 @@ async def main() -> None:
     print("    5. Semantic Retry Loop      — evidence-driven correction, typed feedback")
     print("    6. All Three Adapters       — same VerifiedContext, Claude + OpenAI + Gemini")
     print("    7. Agent Action Gate        — gate what the agent is allowed to do")
+    print("    8. Preventing Memory Corruption — state drift blocked before it reaches storage")
     print()
     print("  Iron Laws verified:")
     print("    Law 1 — Gate Engine: zero LLM calls in all gate steps")
