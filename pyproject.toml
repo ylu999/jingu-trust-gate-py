@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jingu-trust-gate"
-version = "0.1.5"
+version = "0.1.6"
 description = "A deterministic trust gate for LLM systems"
 readme = "README.md"
 license = { text = "MIT" }
