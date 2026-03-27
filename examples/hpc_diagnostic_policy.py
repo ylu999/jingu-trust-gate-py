@@ -6,7 +6,7 @@ PyTorch logs from a failed training job, packages them as a SupportRef pool,
 then asks an LLM to propose structured DiagnosticClaims.
 
 Gate rules:
-  R1/R2  grade=proven|derived + no bound evidence       → MISSING_EVIDENCE       → reject
+  R1/R2  grade != "suspected" + no bound evidence        → MISSING_EVIDENCE       → reject
   R3     permanence/replacement claims without confirmed-loss signal
                                                         → UNSUPPORTED_SEVERITY   → downgrade
   R4     cluster-wide scope claims with < 2 nodes in pool

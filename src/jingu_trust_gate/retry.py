@@ -21,7 +21,7 @@ from .types import (
 
 TUnit = TypeVar("TUnit")
 
-# LLMInvoker: takes prompt + optional feedback, returns Proposal
+# LLMInvoker: async callable — takes (prompt, optional RetryFeedback), returns Proposal
 LLMInvoker = Callable[
     [str, Optional[RetryFeedback]],
     Awaitable[Proposal],

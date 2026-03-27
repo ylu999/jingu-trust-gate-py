@@ -152,7 +152,7 @@ class GeminiContent:
 
 @dataclass
 class GeminiAdapterOptions:
-    role: str = "user"          # "user" | "function"
+    role: str = "user"          # "user" | "model"
 
 
 class GeminiContextAdapter(ContextAdapter[GeminiContent]):

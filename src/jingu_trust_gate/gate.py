@@ -130,7 +130,7 @@ class GateRunner(Generic[TUnit]):
         admitted = [u for u in all_units if u.status != "rejected"]
         rejected = [u for u in all_units if u.status == "rejected"]
 
-        # Step 5: Write audit
+        # Write audit (GateRunner internal — distinct from GatePolicy step numbering)
         all_gate_results = [
             structure_result,
             *[ev for _, ev, _ in eval_triples],
