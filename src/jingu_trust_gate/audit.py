@@ -74,7 +74,7 @@ def _entry_to_dict(entry: AuditEntry) -> dict:
         "proposalKind": entry.proposal_kind,
         "totalUnits": entry.total_units,
         "approvedCount": entry.approved_count,
-        "downgradeCount": entry.downgraded_count,
+        "downgradedCount": entry.downgraded_count,
         "rejectedCount": entry.rejected_count,
         "conflictCount": entry.conflict_count,
         "unitSupportMap": entry.unit_support_map,
