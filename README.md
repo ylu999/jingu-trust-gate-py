@@ -111,6 +111,16 @@ async def main():
     context = gate.render(result)   # VerifiedContext → pass to LLM API
     summary = gate.explain(result)  # GateExplanation(approved, downgraded, rejected, ...)
 
+    # What came through:
+    for block in context.admitted_blocks:
+        print(f"  admitted: {block.source_id!r}  content={block.content!r}")
+    # admitted: 'u1'  content='Fact with evidence'
+
+    # What was blocked (and why):
+    for u in result.rejected_units:
+        print(f"  rejected: {u.unit_id!r}  reason={u.evaluation_results[0].reason_code!r}")
+    # rejected: 'u2'  reason='MISSING_EVIDENCE'
+
     print(f"approved={summary.approved}, rejected={summary.rejected}")
     # approved=1, rejected=1
 
@@ -202,7 +212,7 @@ class MyAdapter(ContextAdapter[list[dict]]):
         return [{"role": "user", "content": b.content} for b in context.admitted_blocks]
 ```
 
-Reference implementations for Claude, OpenAI, and Gemini are in [`examples/adapter_examples.py`](examples/adapter_examples.py).
+Reference implementations for Claude, OpenAI, and Gemini are in [`examples/integration/adapter_examples.py`](examples/integration/adapter_examples.py).
 
 ## Narrative demo
 
