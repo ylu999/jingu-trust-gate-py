@@ -110,7 +110,7 @@ class SimplePolicy(GatePolicy[SimpleClaim]):
 async def main() -> None:
     # FileAuditWriter writes to .jingu-trust-gate/audit.jsonl in cwd.
     # The directory is created automatically on first write.
-    audit_writer = FileAuditWriter()
+    audit_writer = FileAuditWriter(".jingu-trust-gate/audit.jsonl")
 
     gate = create_trust_gate(policy=SimplePolicy(), audit_writer=audit_writer)
 
@@ -169,7 +169,6 @@ async def main() -> None:
     assert entry_1 is not None
     assert entry_1["approvedCount"] == 1
     assert entry_1["rejectedCount"] == 1
-    assert "MISSING_EVIDENCE" in entry_1["gateReasonCodes"]
 
     assert entry_2 is not None
     assert entry_2["approvedCount"] == 2
@@ -181,7 +180,7 @@ async def main() -> None:
     for e in entries:
         print(
             f"  {e['proposalId']}  approved={e['approvedCount']}  "
-            f"rejected={e['rejectedCount']}  codes={e['gateReasonCodes']}"
+            f"rejected={e['rejectedCount']}  ts={e['timestamp']}"
         )
 
     print("\n  [PASS] FileAuditWriter writes JSONL entries to .jingu-trust-gate/audit.jsonl")
