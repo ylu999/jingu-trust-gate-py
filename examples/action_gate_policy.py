@@ -34,8 +34,6 @@ from jingu_trust_gate import (
     Proposal,
     RenderContext,
     RetryContext,
-    RetryError,
-    RetryFeedback,
     SupportRef,
     StructureError,
     StructureValidationResult,
@@ -45,6 +43,14 @@ from jingu_trust_gate import (
     VerifiedContext,
     VerifiedContextSummary,
     create_trust_gate,
+)
+from jingu_trust_gate.helpers import (
+    empty_proposal_errors,
+    missing_id_errors,
+    missing_text_field_errors,
+    has_support_type,
+    filter_support,
+    hints_feedback,
 )
 
 
@@ -68,16 +74,13 @@ class ActionGatePolicy(GatePolicy[ActionProposal]):
 
     def validate_structure(self, proposal: Proposal[ActionProposal]) -> StructureValidationResult:
         errors: list[StructureError] = []
-        if not proposal.units:
-            errors.append(StructureError(field="units", reason_code="EMPTY_PROPOSAL"))
+        errors.extend(empty_proposal_errors(proposal))
+        if errors:
             return StructureValidationResult(valid=False, errors=errors)
+        errors.extend(missing_id_errors(proposal.units))
+        errors.extend(missing_text_field_errors(proposal.units, "action_name", reason_code="MISSING_ACTION_NAME"))
         valid_risk = {"low", "medium", "high"}
         for unit in proposal.units:
-            if not unit.id.strip():
-                errors.append(StructureError(field="id", reason_code="MISSING_UNIT_ID"))
-            if not unit.action_name.strip():
-                errors.append(StructureError(field="action_name", reason_code="MISSING_ACTION_NAME",
-                                             message=f"unit {unit.id}"))
             if unit.risk_level not in valid_risk:
                 errors.append(StructureError(field="risk_level", reason_code="INVALID_RISK_LEVEL",
                                              message=f"unit {unit.id}: must be low|medium|high"))
@@ -90,10 +93,10 @@ class ActionGatePolicy(GatePolicy[ActionProposal]):
     def evaluate_unit(self, uws: UnitWithSupport[ActionProposal], ctx: dict) -> UnitEvaluationResult:
         unit = uws.unit
 
-        # R1: intent not established
+        # R1: intent not established — require a user_intent ref matching the declared source_id
         has_intent = any(
-            s.source_type == "user_intent" and s.source_id == unit.user_intent
-            for s in uws.support_refs
+            s.source_id == unit.user_intent
+            for s in filter_support(uws.support_refs, lambda s: s.source_type == "user_intent")
         )
         if not has_intent:
             return UnitEvaluationResult(
@@ -106,11 +109,7 @@ class ActionGatePolicy(GatePolicy[ActionProposal]):
 
         # R2: irreversible action requires explicit confirmation
         if not unit.is_reversible:
-            has_confirmation = any(
-                s.source_type == "user_confirmation"
-                for s in uws.support_refs
-            )
-            if not has_confirmation:
+            if not has_support_type(uws.support_refs, "user_confirmation"):
                 return UnitEvaluationResult(
                     unit_id=unit.id, decision="reject", reason_code="CONFIRM_REQUIRED",
                     annotations={
@@ -132,11 +131,7 @@ class ActionGatePolicy(GatePolicy[ActionProposal]):
 
         # R4: high-risk action requires explicit authorization
         if unit.risk_level == "high":
-            has_authorization = any(
-                s.source_type == "authorization"
-                for s in uws.support_refs
-            )
-            if not has_authorization:
+            if not has_support_type(uws.support_refs, "authorization"):
                 return UnitEvaluationResult(
                     unit_id=unit.id, decision="reject",
                     reason_code="DESTRUCTIVE_WITHOUT_AUTHORIZATION",
@@ -236,22 +231,16 @@ class ActionGatePolicy(GatePolicy[ActionProposal]):
         self, unit_results: list[UnitEvaluationResult], ctx: RetryContext
     ) -> RetryFeedback:
         failed = [r for r in unit_results if r.decision == "reject"]
-        hints = {
-            "INTENT_NOT_ESTABLISHED": "Add a user_intent ref with the matching source_id to evidence_refs.",
-            "CONFIRM_REQUIRED": "Add a user_confirmation ref to evidence_refs to confirm irreversible action.",
-            "WEAK_JUSTIFICATION": "Provide a justification of at least 30 characters explaining the necessity.",
-            "DESTRUCTIVE_WITHOUT_AUTHORIZATION": "Add an 'authorization' support ref for high-risk actions.",
-        }
-        return RetryFeedback(
+        return hints_feedback(
+            unit_results,
+            hints={
+                "INTENT_NOT_ESTABLISHED": "Add a user_intent ref with the matching source_id to evidence_refs.",
+                "CONFIRM_REQUIRED": "Add a user_confirmation ref to evidence_refs to confirm irreversible action.",
+                "WEAK_JUSTIFICATION": "Provide a justification of at least 30 characters explaining the necessity.",
+                "DESTRUCTIVE_WITHOUT_AUTHORIZATION": "Add an 'authorization' support ref for high-risk actions.",
+            },
             summary=f"{len(failed)} action(s) rejected on attempt {ctx.attempt}/{ctx.max_retries}.",
-            errors=[
-                RetryError(
-                    unit_id=r.unit_id,
-                    reason_code=r.reason_code,
-                    details={"hint": hints.get(r.reason_code, "Review action proposal and resubmit.")},
-                )
-                for r in failed
-            ],
+            default_hint="Review action proposal and resubmit.",
         )
 
 

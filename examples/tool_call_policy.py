@@ -30,8 +30,6 @@ from jingu_trust_gate import (
     Proposal,
     RenderContext,
     RetryContext,
-    RetryError,
-    RetryFeedback,
     SupportRef,
     StructureError,
     StructureValidationResult,
@@ -41,6 +39,13 @@ from jingu_trust_gate import (
     VerifiedContext,
     VerifiedContextSummary,
     create_trust_gate,
+)
+from jingu_trust_gate.helpers import (
+    empty_proposal_errors,
+    missing_id_errors,
+    missing_text_field_errors,
+    has_support_type,
+    hints_feedback,
 )
 
 
@@ -63,15 +68,11 @@ class ToolCallPolicy(GatePolicy[ToolCallProposal]):
 
     def validate_structure(self, proposal: Proposal[ToolCallProposal]) -> StructureValidationResult:
         errors: list[StructureError] = []
-        if not proposal.units:
-            errors.append(StructureError(field="units", reason_code="EMPTY_PROPOSAL"))
+        errors.extend(empty_proposal_errors(proposal))
+        if errors:
             return StructureValidationResult(valid=False, errors=errors)
-        for unit in proposal.units:
-            if not unit.id.strip():
-                errors.append(StructureError(field="id", reason_code="MISSING_UNIT_ID"))
-            if not unit.tool_name.strip():
-                errors.append(StructureError(field="tool_name", reason_code="MISSING_TOOL_NAME",
-                                             message=f"unit {unit.id}"))
+        errors.extend(missing_id_errors(proposal.units))
+        errors.extend(missing_text_field_errors(proposal.units, "tool_name", reason_code="MISSING_TOOL_NAME"))
         return StructureValidationResult(valid=len(errors) == 0, errors=errors)
 
     def bind_support(self, unit: ToolCallProposal, pool: list[SupportRef]) -> UnitWithSupport[ToolCallProposal]:
@@ -81,10 +82,8 @@ class ToolCallPolicy(GatePolicy[ToolCallProposal]):
     def evaluate_unit(self, uws: UnitWithSupport[ToolCallProposal], ctx: dict) -> UnitEvaluationResult:
         unit = uws.unit
 
-        # R2: intent not established — check for user_query in the full pool via context
-        # We detect this by checking if any support ref has source_type == "user_query"
-        has_intent = any(s.source_type == "user_query" for s in uws.support_refs)
-        if not has_intent:
+        # R2: intent not established — check for user_query in bound support refs
+        if not has_support_type(uws.support_refs, "user_query"):
             return UnitEvaluationResult(
                 unit_id=unit.id, decision="reject", reason_code="INTENT_NOT_ESTABLISHED",
                 annotations={
@@ -168,20 +167,14 @@ class ToolCallPolicy(GatePolicy[ToolCallProposal]):
         self, unit_results: list[UnitEvaluationResult], ctx: RetryContext
     ) -> RetryFeedback:
         failed = [r for r in unit_results if r.decision == "reject"]
-        hints = {
-            "INTENT_NOT_ESTABLISHED": "Add a user_query support ref to evidence_refs to establish intent.",
-            "REDUNDANT_CALL": "Remove this call; the same tool with the same arguments was already executed.",
-        }
-        return RetryFeedback(
+        return hints_feedback(
+            unit_results,
+            hints={
+                "INTENT_NOT_ESTABLISHED": "Add a user_query support ref to evidence_refs to establish intent.",
+                "REDUNDANT_CALL": "Remove this call; the same tool with the same arguments was already executed.",
+            },
             summary=f"{len(failed)} tool call(s) rejected on attempt {ctx.attempt}/{ctx.max_retries}.",
-            errors=[
-                RetryError(
-                    unit_id=r.unit_id,
-                    reason_code=r.reason_code,
-                    details={"hint": hints.get(r.reason_code, "Review and resubmit.")},
-                )
-                for r in failed
-            ],
+            default_hint="Review and resubmit.",
         )
 
 

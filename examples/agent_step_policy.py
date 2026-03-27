@@ -32,8 +32,6 @@ from jingu_trust_gate import (
     Proposal,
     RenderContext,
     RetryContext,
-    RetryError,
-    RetryFeedback,
     SupportRef,
     StructureError,
     StructureValidationResult,
@@ -43,6 +41,12 @@ from jingu_trust_gate import (
     VerifiedContext,
     VerifiedContextSummary,
     create_trust_gate,
+)
+from jingu_trust_gate.helpers import (
+    empty_proposal_errors,
+    missing_id_errors,
+    missing_text_field_errors,
+    hints_feedback,
 )
 
 
@@ -64,18 +68,12 @@ class AgentStepPolicy(GatePolicy[AgentStepProposal]):
 
     def validate_structure(self, proposal: Proposal[AgentStepProposal]) -> StructureValidationResult:
         errors: list[StructureError] = []
-        if not proposal.units:
-            errors.append(StructureError(field="units", reason_code="EMPTY_PROPOSAL"))
+        errors.extend(empty_proposal_errors(proposal))
+        if errors:
             return StructureValidationResult(valid=False, errors=errors)
-        for unit in proposal.units:
-            if not unit.id.strip():
-                errors.append(StructureError(field="id", reason_code="MISSING_UNIT_ID"))
-            if not unit.description.strip():
-                errors.append(StructureError(field="description", reason_code="EMPTY_DESCRIPTION",
-                                             message=f"unit {unit.id}"))
-            if not unit.step_type.strip():
-                errors.append(StructureError(field="step_type", reason_code="MISSING_STEP_TYPE",
-                                             message=f"unit {unit.id}"))
+        errors.extend(missing_id_errors(proposal.units))
+        errors.extend(missing_text_field_errors(proposal.units, "description", reason_code="EMPTY_DESCRIPTION"))
+        errors.extend(missing_text_field_errors(proposal.units, "step_type", reason_code="MISSING_STEP_TYPE"))
         return StructureValidationResult(valid=len(errors) == 0, errors=errors)
 
     def bind_support(self, unit: AgentStepProposal, pool: list[SupportRef]) -> UnitWithSupport[AgentStepProposal]:
@@ -181,20 +179,13 @@ class AgentStepPolicy(GatePolicy[AgentStepProposal]):
         self, unit_results: list[UnitEvaluationResult], ctx: RetryContext
     ) -> RetryFeedback:
         failed = [r for r in unit_results if r.decision == "reject"]
-        hints = {
-            "MISSING_CONTEXT": "Ensure required_context keys exist in the support pool, or remove them from required_context.",
-            "INSUFFICIENT_FINDINGS": "Lower grade to 'derived' or add supporting research findings to the pool.",
-        }
-        return RetryFeedback(
+        return hints_feedback(
+            unit_results,
+            hints={
+                "MISSING_CONTEXT": "Ensure required_context keys exist in the support pool, or remove them from required_context.",
+                "INSUFFICIENT_FINDINGS": "Lower grade to 'derived' or add supporting research findings to the pool.",
+            },
             summary=f"{len(failed)} step(s) rejected on attempt {ctx.attempt}/{ctx.max_retries}.",
-            errors=[
-                RetryError(
-                    unit_id=r.unit_id,
-                    reason_code=r.reason_code,
-                    details={"hint": hints.get(r.reason_code, "Review step proposal and resubmit.")},
-                )
-                for r in failed
-            ],
         )
 
 
