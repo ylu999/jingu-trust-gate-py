@@ -121,6 +121,50 @@ Implement all six methods. None may call an LLM.
 
 `blocking` conflicts force-reject all involved units — `admitted_blocks` is empty, LLM receives only `instructions`. `informational` conflicts admit both with `conflict_note`.
 
+## SupportRef — not just evidence
+
+`SupportRef` is the unit of context that a proposal unit can be bound to. `source_type` is a free string — you define the semantics for your domain.
+
+The same mechanism works for any context that needs to constrain what an LLM or agent is allowed to assert or do:
+
+| `source_type` value | What it represents | Typical domain |
+|---|---|---|
+| `"document"` / `"observation"` | Retrieved RAG evidence | Knowledge base Q&A |
+| `"prerequisite"` | A condition that must be true before a step can run | Agent planning |
+| `"system_state"` | Current runtime state (queue depth, error count, flag value) | SRE / ops agents |
+| `"user_intent"` / `"explicit_request"` | A statement the user actually made | Tool call / action gate |
+| `"user_confirmation"` | Explicit user approval for a risky action | High-risk action gate |
+| `"prior_result"` / `"tool_output"` | Output from a previous tool call | Multi-step agents |
+| `"permission"` / `"authorization"` | A capability or role grant | Authority enforcement |
+| `"finding"` | A concluded fact from earlier reasoning | Research agents |
+
+Your `bind_support()` and `evaluate_unit()` filter and check by `source_type`. For example:
+
+```python
+# Tool call gate: reject if no "explicit_request" in support
+def evaluate_unit(self, uws, ctx):
+    has_intent = any(s.source_type == "explicit_request" for s in uws.support_refs)
+    if not has_intent:
+        return UnitEvaluationResult(unit_id=uws.unit.id, decision="reject", reason_code="INTENT_NOT_ESTABLISHED")
+    ...
+
+# Action gate: require "user_confirmation" for high-risk irreversible actions
+def evaluate_unit(self, uws, ctx):
+    if uws.unit.risk_level == "high" and not uws.unit.is_reversible:
+        confirmed = any(s.source_type == "user_confirmation" for s in uws.support_refs)
+        if not confirmed:
+            return UnitEvaluationResult(unit_id=uws.unit.id, decision="reject", reason_code="CONFIRM_REQUIRED")
+    ...
+
+# Agent step gate: reject if required context not in support pool
+def evaluate_unit(self, uws, ctx):
+    if uws.unit.grade == "required" and not uws.support_ids:
+        return UnitEvaluationResult(unit_id=uws.unit.id, decision="reject", reason_code="MISSING_CONTEXT")
+    ...
+```
+
+See `examples/tool_call_policy.py`, `examples/action_gate_policy.py`, and `examples/agent_step_policy.py` for complete working implementations.
+
 ## Adapters
 
 `VerifiedContext` is abstract. Implement `ContextAdapter[T]` to convert it to your LLM API's wire format:
