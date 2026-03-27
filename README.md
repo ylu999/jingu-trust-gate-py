@@ -83,20 +83,19 @@ from jingu_trust_gate import (
     create_trust_gate, GatePolicy, Proposal, SupportRef,
     UnitWithSupport, UnitEvaluationResult, AdmittedUnit,
     VerifiedContext, VerifiedContextSummary, VerifiedBlock,
-    StructureValidationResult, ConflictAnnotation,
-    RetryFeedback, RenderContext, RetryContext,
-    AuditEntry, AuditWriter,
+    StructureValidationResult, RetryFeedback, AuditEntry, AuditWriter,
 )
 from jingu_trust_gate.helpers import approve, reject
 
 @dataclass
-class MyClaim:
+class Claim:
     id: str
     text: str
-    grade: str
+    grade: str           # "proven" | "derived"
     evidence_refs: list[str]
 
-class MyPolicy(GatePolicy[MyClaim]):
+# All domain logic lives in GatePolicy. The gate core has none.
+class MyPolicy(GatePolicy):
     def validate_structure(self, proposal):
         return StructureValidationResult(valid=len(proposal.units) > 0, errors=[])
 
@@ -109,8 +108,7 @@ class MyPolicy(GatePolicy[MyClaim]):
             return reject(uws.unit.id, "MISSING_EVIDENCE")
         return approve(uws.unit.id)
 
-    def detect_conflicts(self, units, pool):
-        return []
+    def detect_conflicts(self, units, pool): return []
 
     def render(self, admitted_units, pool, ctx):
         blocks = [VerifiedBlock(source_id=u.unit_id, content=u.unit.text) for u in admitted_units]
@@ -121,48 +119,43 @@ class MyPolicy(GatePolicy[MyClaim]):
 
     def build_retry_feedback(self, unit_results, ctx):
         failed = [r for r in unit_results if r.decision == "reject"]
-        return RetryFeedback(
-            summary=f"{len(failed)} claim(s) rejected",
-            errors=[],
-        )
+        return RetryFeedback(summary=f"{len(failed)} rejected", errors=[])
 
 class NoopAuditWriter(AuditWriter):
-    async def append(self, entry: AuditEntry) -> None:
-        pass
+    async def append(self, entry: AuditEntry) -> None: pass
 
 async def main():
     gate = create_trust_gate(policy=MyPolicy(), audit_writer=NoopAuditWriter())
-
-    support_pool = [
-        SupportRef(id="ref-1", source_id="doc-1", source_type="observation", attributes={}),
-    ]
-    proposal = Proposal(
-        id="prop-1", kind="response",
-        units=[
-            MyClaim(id="u1", text="Fact with evidence", grade="proven", evidence_refs=["doc-1"]),
-            MyClaim(id="u2", text="Hallucinated fact",  grade="proven", evidence_refs=[]),
-        ],
-    )
+    support_pool = [SupportRef(id="ref-1", source_id="doc-1", source_type="observation", attributes={})]
+    proposal = Proposal(id="prop-1", kind="response", units=[
+        Claim(id="u1", text="Fact with evidence", grade="proven", evidence_refs=["doc-1"]),
+        Claim(id="u2", text="Hallucinated fact",  grade="proven", evidence_refs=[]),
+    ])
 
     result  = await gate.admit(proposal, support_pool)
     context = gate.render(result)   # VerifiedContext → pass to LLM API
-    summary = gate.explain(result)  # GateExplanation(approved, downgraded, rejected, ...)
+    summary = gate.explain(result)  # GateExplanation(approved, rejected, ...)
 
     # What came through:
     for block in context.admitted_blocks:
-        print(f"  admitted: {block.source_id!r}  content={block.content!r}")
-    # admitted: 'u1'  content='Fact with evidence'
+        print(f"admitted: {block.source_id!r}  {block.content!r}")
+    # admitted: 'u1'  'Fact with evidence'
 
     # What was blocked (and why):
     for u in result.rejected_units:
-        print(f"  rejected: {u.unit_id!r}  reason={u.evaluation_results[0].reason_code!r}")
+        print(f"rejected: {u.unit_id!r}  reason={u.evaluation_results[0].reason_code!r}")
     # rejected: 'u2'  reason='MISSING_EVIDENCE'
-
-    print(f"approved={summary.approved}, rejected={summary.rejected}")
-    # approved=1, rejected=1
 
 asyncio.run(main())
 ```
+
+## Three iron laws
+
+1. **Zero LLM calls in the gate** — all four steps are deterministic code. No AI judging AI. The same input always produces the same admission decision.
+
+2. **Policy is injected, not embedded** — the gate core has zero domain logic. Every business rule lives in your `GatePolicy`. Swap the policy, the gate stays identical.
+
+3. **Every admission is audited** — append-only JSONL at `.jingu-trust-gate/audit.jsonl`. Every claim's fate is on record with its `audit_id`, reason code, and timestamp.
 
 ## GatePolicy interface
 
@@ -253,13 +246,11 @@ Reference implementations for Claude, OpenAI, and Gemini are in [`examples/integ
 
 ## Narrative demo
 
-A self-contained walkthrough of the full pipeline — same domain (household memory assistant) used in the TypeScript reference demo:
-
 ```bash
-python demo/demo.py
+python demo/demo.py        # full 8-scenario walkthrough
 ```
 
-Covers all 6 scenarios: happy path, missing evidence, over-specificity, conflict detection (informational + blocking), semantic retry loop, and all three adapters (Claude / OpenAI / Gemini).
+Covers 8 scenarios: happy path, missing evidence, over-specificity, conflict detection (informational + blocking), semantic retry loop, all three adapters (Claude / OpenAI / Gemini), agent action gate (`INTENT_NOT_ESTABLISHED`, `CONFIRM_REQUIRED`), and preventing memory corruption (`INFERRED_NOT_STATED`, state drift).
 
 ## Examples
 
@@ -313,17 +304,15 @@ python examples/integration/downgrade_retry_example.py
 python examples/integration/adapter_examples.py
 ```
 
-## Three iron laws
-
-1. **Gate Engine: zero LLM calls** — all four gate steps are deterministic code. No AI judging AI.
-2. **Policy is injected** — the gate core has zero business logic. Domain rules live entirely in `GatePolicy`.
-3. **Every admission is audited** — append-only JSONL at `.jingu-trust-gate/audit.jsonl`.
-
 ## TypeScript SDK
 
 The [TypeScript SDK](https://github.com/ylu999/jingu-trust-gate) (`npm install jingu-trust-gate`) is the reference implementation. Both SDKs are API-compatible — the same `GatePolicy` design, same pipeline, same type names.
 
 ## Changelog
+
+### 0.1.11
+- `demo/demo.py` — added Scenario 7 (Agent Action Gate: `INTENT_NOT_ESTABLISHED`, `CONFIRM_REQUIRED`) and Scenario 8 (Preventing Memory Corruption: `INFERRED_NOT_STATED`, state drift). Now 8 scenarios.
+- README: hero section rewritten with concrete before/after examples for both failure modes. Quick start and Three iron laws moved to top.
 
 ### 0.1.10
 - Examples reorganized into four use-case categories: `answers/`, `actions/`, `state/`, `integration/`
