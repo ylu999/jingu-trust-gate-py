@@ -1,8 +1,20 @@
 # jingu-trust-gate
 
-**LLM output is untrusted input. jingu-trust-gate decides what is allowed to become trusted system state.**
+**AI can propose anything. Only verified results are accepted.**
 
-Python SDK for [jingu-trust-gate](https://github.com/ylu999/jingu-trust-gate) — deterministic admission control layer for LLM systems.
+```
+AI  →  propose
+           ↓
+        verify
+           ↓
+    accept / reject
+```
+
+LLMs are proposal generators, not sources of truth. They produce confident output whether or not it is correct. jingu-trust-gate is the layer that decides which proposals are allowed to become system state — by checking each one against evidence before it is admitted.
+
+Nothing passes through unless it can be proven. Every decision is audited.
+
+Python SDK for [jingu-trust-gate](https://github.com/ylu999/jingu-trust-gate). Requires Python 3.11+. Zero runtime dependencies.
 
 ## Install
 
@@ -10,13 +22,20 @@ Python SDK for [jingu-trust-gate](https://github.com/ylu999/jingu-trust-gate) �
 pip install jingu-trust-gate
 ```
 
-Requires Python 3.11+. Zero runtime dependencies.
-
 ## The problem
 
-LLMs do not distinguish between what is known and what is guessed. In a RAG pipeline, this means the LLM can assert facts not in your data, over-specify beyond what evidence supports, or silently resolve conflicting sources — with no way to detect or audit it.
+LLMs do not distinguish between what is known and what is guessed. This creates the same failure mode across every LLM use case:
 
-jingu-trust-gate inserts a deterministic gate between LLM output and your trusted context. Only claims provably supported by evidence are allowed through. Every decision is written to an audit log.
+| Use case | What the LLM proposes | What can go wrong |
+|---|---|---|
+| RAG / Q&A | Claims about retrieved data | Asserts facts not in your evidence |
+| Agent planning | Next steps to execute | Proposes steps that lack required context |
+| Tool calls | Function calls to make | Calls tools redundantly or without user intent |
+| Action execution | Irreversible actions | Acts without authorization or confirmation |
+
+In each case, the LLM output flows directly into system state with no deterministic check. Once an incorrect output is accepted, it is indistinguishable from a correct one — and there is no reproducible way to audit the failure.
+
+jingu-trust-gate inserts a deterministic gate between LLM output and your system state. Only proposals that are provably supported by evidence are allowed through. Every decision is written to an audit log.
 
 ## Quick start
 
