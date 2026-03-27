@@ -19,3 +19,4 @@ Type "python demo/aha_moment_demo.py"
 Sleep 500ms
 Enter
 Sleep 25s
+Sleep 5s
