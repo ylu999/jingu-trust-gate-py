@@ -48,7 +48,7 @@ from jingu_trust_gate.helpers import approve, reject, downgrade
 # ---------------------------------------------------------------------------
 
 sys.path.insert(0, ".")
-from examples.adapter_examples import (
+from examples.integration.adapter_examples import (
     ClaudeContextAdapter,
     ClaudeAdapterOptions,
     OpenAIContextAdapter,
@@ -1195,6 +1195,333 @@ def print_patterns_and_anti_patterns() -> None:
 
 
 # ===========================================================================
+# Scenario 7: Agent Action Gate — Gate What the Agent Is Allowed to Do
+# ===========================================================================
+
+# AgentActionPolicy gates action proposals instead of knowledge claims.
+#
+# Gate rules:
+#   R1  no "explicit_request" evidence                                → INTENT_NOT_ESTABLISHED → reject
+#   R2  risk_level="high" + is_reversible=False + no "user_confirmation" → CONFIRM_REQUIRED → reject
+#   R3  everything else                                               → approve
+#
+# source_type values used here:
+#   "explicit_request"  — something the user directly asked for
+#   "user_confirmation" — explicit user yes/ok for a high-risk action
+
+@dataclass
+class ActionProposal:
+    id: str
+    action_name: str
+    description: str
+    risk_level: str   # "low" | "medium" | "high"
+    is_reversible: bool
+    evidence_refs: list[str] = field(default_factory=list)
+
+
+class AgentActionPolicy(GatePolicy):
+    def validate_structure(self, proposal: Proposal) -> StructureValidationResult:
+        if len(proposal.units) == 0:
+            return StructureValidationResult(
+                valid=False,
+                errors=[StructureError(field="units", reason_code="EMPTY_UNITS")],
+            )
+        return StructureValidationResult(valid=True, errors=[])
+
+    def bind_support(self, unit: ActionProposal, pool: list[SupportRef]) -> UnitWithSupport:
+        matched = [s for s in pool if s.source_id in unit.evidence_refs]
+        return UnitWithSupport(unit=unit, support_ids=[s.id for s in matched], support_refs=matched)
+
+    def evaluate_unit(self, uws: UnitWithSupport, ctx) -> UnitEvaluationResult:
+        unit: ActionProposal = uws.unit
+
+        # R1: every action needs an explicit user request
+        has_request = any(s.attributes.get("type") == "explicit_request" for s in uws.support_refs)
+        if not has_request:
+            return reject(
+                unit.id,
+                "INTENT_NOT_ESTABLISHED",
+                note=f'No explicit_request evidence for "{unit.action_name}" — agent cannot act without user authorization',
+            )
+
+        # R2: high-risk irreversible actions need user_confirmation on top
+        if unit.risk_level == "high" and not unit.is_reversible:
+            has_confirmation = any(s.attributes.get("type") == "user_confirmation" for s in uws.support_refs)
+            if not has_confirmation:
+                return reject(
+                    unit.id,
+                    "CONFIRM_REQUIRED",
+                    note="risk_level=high + is_reversible=False requires user_confirmation (a request alone is not enough)",
+                )
+
+        return approve(unit.id)
+
+    def detect_conflicts(self, units: list[UnitWithSupport], pool: list[SupportRef]) -> list[ConflictAnnotation]:
+        return []
+
+    def render(self, admitted_units: list[AdmittedUnit], pool: list[SupportRef], ctx: RenderContext) -> VerifiedContext:
+        blocks = [
+            VerifiedBlock(
+                source_id=u.unit_id,
+                content=f"[{u.unit.risk_level.upper()}] {u.unit.action_name}: {u.unit.description}",
+                grade=u.unit.risk_level,
+            )
+            for u in admitted_units
+        ]
+        return VerifiedContext(
+            admitted_blocks=blocks,
+            summary=VerifiedContextSummary(admitted=len(blocks), rejected=0, conflicts=0),
+            instructions=(
+                "Execute only the verified actions below. "
+                "Do not re-ask for confirmation — admitted actions are already authorized. "
+                "Do not execute any action that was rejected."
+            ),
+        )
+
+    def build_retry_feedback(self, unit_results: list[UnitEvaluationResult], ctx: RetryContext) -> RetryFeedback:
+        failed = [r for r in unit_results if r.decision == "reject"]
+        return RetryFeedback(
+            summary=f"{len(failed)} action(s) rejected on attempt {ctx.attempt}/{ctx.max_retries}.",
+            errors=[
+                RetryError(
+                    unit_id=r.unit_id,
+                    reason_code=r.reason_code,
+                    details={
+                        "hint": (
+                            "Add an explicit_request SupportRef — the user must have asked for this action"
+                            if r.reason_code == "INTENT_NOT_ESTABLISHED"
+                            else "Add a user_confirmation SupportRef before proposing high-risk irreversible actions"
+                        ),
+                    },
+                )
+                for r in failed
+            ],
+        )
+
+
+async def scenario7() -> None:
+    sep("Scenario 7: Agent Action Gate — Gate What the Agent Is Allowed to Do")
+    print()
+    explain("This is the ACTIONS pattern: the gate is not checking claims about the world — it is checking whether the agent is AUTHORIZED to take specific actions. The LLM output is a list of proposed actions. Only authorized ones execute.")
+    print()
+    explain("Domain: household assistant. User says 'Please order more milk.' The agent proposes 3 actions: order_milk (low risk), delete_old_shopping_list (medium risk, reversible), send_notification_email (low risk). But only order_milk was actually requested.")
+    print()
+    explain("WHY THIS MATTERS FOR AGENTS: without a gate, the agent executes everything it proposes. With jingu-trust-gate, each action must be traced back to explicit user authorization before it can run. The agent cannot act beyond its mandate.")
+
+    subsep("INPUT — Authorization evidence pool")
+    print()
+    print("  User said: 'Please order more milk'")
+    print()
+    print("  Support pool:")
+    print('    req-001: type=explicit_request  content="Please order more milk"')
+    print('    (no user_confirmation — user never said yes to a high-risk action)')
+
+    auth_pool: list[SupportRef] = [
+        SupportRef(
+            id="ref-req-1",
+            source_id="req-001",
+            source_type="observation",
+            attributes={
+                "type": "explicit_request",
+                "content": "Please order more milk — we are running low",
+            },
+        ),
+    ]
+
+    subsep("INPUT — Agent's proposed actions")
+    print()
+    print('  action-1: order_milk          risk=low   reversible=True  evidence_refs=["req-001"]')
+    print('  action-2: delete_old_list     risk=medium reversible=False evidence_refs=[]')
+    print('             → no evidence — agent decided on its own')
+    print('  action-3: send_notification   risk=low   reversible=False evidence_refs=[]')
+    print('             → user asked to order milk, not to send emails')
+
+    proposal = Proposal(
+        id="prop-agent-001",
+        kind="plan",
+        units=[
+            # action-1: user explicitly asked for this → APPROVE
+            ActionProposal(
+                id="action-1",
+                action_name="order_milk",
+                description="Place online order for 2L whole milk via grocery app",
+                risk_level="low",
+                is_reversible=True,
+                evidence_refs=["req-001"],
+            ),
+            # action-2: agent decided on its own, no user request → REJECT (INTENT_NOT_ESTABLISHED)
+            ActionProposal(
+                id="action-2",
+                action_name="delete_old_shopping_list",
+                description="Delete the shopping list from 2 weeks ago",
+                risk_level="medium",
+                is_reversible=False,
+                evidence_refs=[],
+            ),
+            # action-3: req-001 is about ordering milk, not sending emails → REJECT (INTENT_NOT_ESTABLISHED)
+            ActionProposal(
+                id="action-3",
+                action_name="send_notification_email",
+                description="Send email to household members that milk was ordered",
+                risk_level="low",
+                is_reversible=False,
+                evidence_refs=[],
+            ),
+        ],
+    )
+
+    gate = create_trust_gate(policy=AgentActionPolicy(), audit_writer=NoopAuditWriter())
+
+    subsep("GATE EXECUTION — gate.admit()")
+    print()
+    print("  Step 1 — validate_structure(): 3 units  → valid")
+    print("  Step 2 — bind_support():")
+    print("            action-1 evidence_refs=[req-001]  → matched ref-req-1")
+    print("            action-2 evidence_refs=[]         → no support")
+    print("            action-3 evidence_refs=[]         → no support")
+    print("  Step 3 — evaluate_unit():")
+    print("            action-1: has explicit_request  → approve")
+    print("            action-2: no explicit_request   → INTENT_NOT_ESTABLISHED → reject")
+    print("            action-3: no explicit_request   → INTENT_NOT_ESTABLISHED → reject")
+    print("  Step 4 — detect_conflicts(): none")
+
+    result = await gate.admit(proposal, auth_pool)
+    context = gate.render(result)
+    expl = gate.explain(result)
+
+    subsep("OUTPUT — Gate decision")
+    print()
+    print("  Admitted (authorized to execute):")
+    for u in result.admitted_units:
+        label(f"    {u.unit_id} [{u.status}]", u.unit.action_name)
+    print()
+    print("  Rejected (blocked):")
+    for u in result.rejected_units:
+        ann = u.evaluation_results[0].annotations if u.evaluation_results else {}
+        label(f"    {u.unit_id} [{u.evaluation_results[0].reason_code if u.evaluation_results else '?'}]", u.unit.action_name)
+        if ann and ann.get("note"):
+            label("      note", ann["note"])
+    print()
+    label("  approved", expl.approved)
+    label("  rejected", expl.rejected)
+
+    print()
+    print("  VerifiedContext.instructions (sent to LLM before it executes):")
+    print(f'    "{context.instructions}"')
+    print()
+    print("  Admitted action blocks:")
+    for block in context.admitted_blocks:
+        label(f"    {block.source_id}", block.content)
+
+    print()
+    explain("The agent receives VerifiedContext with 1 admitted action and the instructions. It executes order_milk. It does NOT execute delete_old_shopping_list or send_notification_email — those were never admitted through the gate.")
+    print()
+    explain("KEY POINT: the gate did not need to 'understand' the user request. It checked a deterministic rule: does this action have explicit_request evidence in its support pool? No evidence → no execution. This is why the gate is deterministic even in complex agentic flows.")
+
+    # ── Part B: High-risk action with confirmation ────────────────────────────
+
+    subsep("Part B — High-risk action: request alone is not enough")
+    print()
+    explain("User says 'Clear my entire order history.' Agent proposes delete_order_history (risk_level=high, is_reversible=False). The request is present — but R2 fires: high-risk irreversible actions need user_confirmation too.")
+    print()
+    print("  First attempt — only request present:")
+    print('    req-002: type=explicit_request  content="Clear my entire order history"')
+    print("    → R2: risk_level=high + is_reversible=False → CONFIRM_REQUIRED → reject")
+
+    high_risk_pool: list[SupportRef] = [
+        SupportRef(
+            id="ref-req-2",
+            source_id="req-002",
+            source_type="observation",
+            attributes={
+                "type": "explicit_request",
+                "content": "Clear my entire order history — I want a fresh start",
+            },
+        ),
+    ]
+
+    high_risk_proposal = Proposal(
+        id="prop-agent-002",
+        kind="plan",
+        units=[
+            ActionProposal(
+                id="action-4",
+                action_name="delete_order_history",
+                description="Permanently delete all past orders",
+                risk_level="high",
+                is_reversible=False,
+                evidence_refs=["req-002"],
+            ),
+        ],
+    )
+
+    high_risk_gate = create_trust_gate(policy=AgentActionPolicy(), audit_writer=NoopAuditWriter())
+    result2 = await high_risk_gate.admit(high_risk_proposal, high_risk_pool)
+    act4_rejected = next((u for u in result2.rejected_units if u.unit_id == "action-4"), None)
+    ann2 = act4_rejected.evaluation_results[0].annotations if act4_rejected and act4_rejected.evaluation_results else {}
+
+    label("  action-4 decision", act4_rejected.evaluation_results[0].reason_code if act4_rejected and act4_rejected.evaluation_results else "?")
+    if ann2 and ann2.get("note"):
+        label("  note", ann2["note"])
+
+    print()
+    print("  Second attempt — user confirms:")
+    print('    confirm-001: type=user_confirmation  content="Yes, delete everything"')
+    print("    → R1: has explicit_request ✓   R2: has user_confirmation ✓ → approve")
+
+    confirmed_pool: list[SupportRef] = [
+        *high_risk_pool,
+        SupportRef(
+            id="ref-confirm-1",
+            source_id="confirm-001",
+            source_type="observation",
+            attributes={
+                "type": "user_confirmation",
+                "content": "Yes, go ahead — delete everything",
+            },
+        ),
+    ]
+
+    confirmed_proposal = Proposal(
+        id="prop-agent-002-confirmed",
+        kind="plan",
+        units=[
+            ActionProposal(
+                id="action-4",
+                action_name="delete_order_history",
+                description="Permanently delete all past orders",
+                risk_level="high",
+                is_reversible=False,
+                evidence_refs=["req-002", "confirm-001"],
+            ),
+        ],
+    )
+
+    result3 = await high_risk_gate.admit(confirmed_proposal, confirmed_pool)
+    act4_confirmed = next((u for u in result3.admitted_units if u.unit_id == "action-4"), None)
+
+    label("  action-4 decision (with confirmation)", act4_confirmed.status if act4_confirmed else "?")
+
+    assert expl.approved == 1, f"expected 1 approved, got {expl.approved}"
+    assert expl.rejected == 2, f"expected 2 rejected, got {expl.rejected}"
+    assert any(u.unit_id == "action-1" for u in result.admitted_units)
+    assert any(u.unit_id == "action-2" for u in result.rejected_units)
+    assert any(u.unit_id == "action-3" for u in result.rejected_units)
+    rej2 = next(u for u in result.rejected_units if u.unit_id == "action-2")
+    assert rej2.evaluation_results[0].reason_code == "INTENT_NOT_ESTABLISHED"
+    assert act4_rejected is not None and act4_rejected.evaluation_results[0].reason_code == "CONFIRM_REQUIRED"
+    assert act4_confirmed is not None and act4_confirmed.status == "approved"
+
+    print()
+    pass_("action-1 (order_milk) approved — user explicitly requested it")
+    pass_("action-2 (delete_old_list) rejected — INTENT_NOT_ESTABLISHED (agent decided on its own)")
+    pass_("action-3 (send_notification_email) rejected — INTENT_NOT_ESTABLISHED (no email request)")
+    pass_("action-4 (delete_order_history) rejected first attempt — CONFIRM_REQUIRED")
+    pass_("action-4 approved after user_confirmation added")
+    pass_("VerifiedContext.instructions tells agent which actions to execute")
+
+
+# ===========================================================================
 # Main
 # ===========================================================================
 
@@ -1207,10 +1534,11 @@ async def main() -> None:
     await scenario4()
     await scenario5()
     await scenario6()
+    await scenario7()
 
     print_patterns_and_anti_patterns()
 
-    sep("ALL 6 SCENARIOS PASSED")
+    sep("ALL 7 SCENARIOS PASSED")
     print()
     print("  Scenarios:")
     print("    1. Happy Path               — zero friction, full pipeline printed")
@@ -1220,6 +1548,7 @@ async def main() -> None:
     print("                                  blocking: both force-rejected, LLM gets empty context")
     print("    5. Semantic Retry Loop      — evidence-driven correction, typed feedback")
     print("    6. All Three Adapters       — same VerifiedContext, Claude + OpenAI + Gemini")
+    print("    7. Agent Action Gate        — gate what the agent is allowed to do")
     print()
     print("  Iron Laws verified:")
     print("    Law 1 — Gate Engine: zero LLM calls in all gate steps")
