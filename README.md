@@ -366,6 +366,14 @@ The [TypeScript SDK](https://github.com/ylu999/jingu-trust-gate) (`npm install j
 
 ## Changelog
 
+### 0.1.13
+- `demo/aha-moment-demo.gif` — terminal demo GIF recorded with vhs (Menlo font, natural pacing, 25s)
+- README: demo GIF embedded in hero section; added clone instructions before demo commands
+
+### 0.1.12
+- `demo/aha_moment_demo.py` — standalone two-scenario demo showing the two core failure modes end-to-end, with timed pacing. Run with `python demo/aha_moment_demo.py`.
+- ARCHITECTURE.md: updated examples table to current four-category structure; removed four deleted files from the listing
+
 ### 0.1.11
 - `demo/demo.py` — added Scenario 7 (Agent Action Gate: `INTENT_NOT_ESTABLISHED`, `CONFIRM_REQUIRED`) and Scenario 8 (Preventing Memory Corruption: `INFERRED_NOT_STATED`, state drift). Now 8 scenarios.
 - README: hero section rewritten with concrete before/after examples for both failure modes. Quick start and Three iron laws moved to top.
