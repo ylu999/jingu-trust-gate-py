@@ -66,7 +66,12 @@ The two hallucinated facts are blocked at the boundary. They are never stored. T
 
 The gate does not make the model smarter. It makes the system honest about what it actually knows.
 
+![jingu-trust-gate demo](https://raw.githubusercontent.com/ylu999/jingu-trust-gate/main/demo/demo.gif)
+
 ```bash
+# clone the repo to run demos
+git clone https://github.com/ylu999/jingu-trust-gate-py
+cd jingu-trust-gate-py
 python demo/aha_moment_demo.py   # two scenarios above, with pacing
 python demo/demo.py              # full 8-scenario walkthrough
 ```
@@ -293,7 +298,11 @@ Reference implementations for Claude, OpenAI, and Gemini are in [`examples/integ
 
 ## Narrative demo
 
+Demos require cloning the repo — they are not included in the published PyPI package.
+
 ```bash
+git clone https://github.com/ylu999/jingu-trust-gate-py
+cd jingu-trust-gate-py
 python demo/demo.py        # full 8-scenario walkthrough
 ```
 
