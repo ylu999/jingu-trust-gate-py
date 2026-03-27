@@ -1,5 +1,5 @@
 """
-Tests for GateRunner and TrustGate — port of the TS test suite.
+Tests for GateRunner and TrustGate — pytest test suite for GateRunner and TrustGate.
 Run: pytest tests/
 """
 

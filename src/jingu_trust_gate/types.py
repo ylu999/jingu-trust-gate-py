@@ -1,6 +1,6 @@
 """
 Core types for jingu-trust-gate Python SDK.
-Direct port of src/types/*.ts — all types are plain dataclasses (no runtime deps).
+All core types — plain dataclasses, no runtime dependencies.
 """
 
 from __future__ import annotations

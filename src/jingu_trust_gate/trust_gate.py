@@ -1,5 +1,5 @@
 """
-TrustGate — top-level entry point. Port of src/trust-gate.ts.
+TrustGate — top-level entry point. Wraps GateRunner with audit, retry, render, and explain.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 """
-GateRunner — port of src/gate/gate-runner.ts.
+GateRunner — four-step admission pipeline: validate → bind → evaluate → conflicts → admit.
 Four-step admission pipeline: validate → bind+evaluate → conflicts → admit.
 """
 

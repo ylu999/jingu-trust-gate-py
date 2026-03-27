@@ -1,5 +1,5 @@
 """
-BaseRenderer — default render implementation. Port of src/renderer/base-renderer.ts.
+BaseRenderer — default render implementation.
 
 Converts admitted units into VerifiedContext (input for LLM API).
 Does NOT generate user-facing text — that is the LLM's responsibility.

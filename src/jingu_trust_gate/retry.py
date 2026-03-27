@@ -1,5 +1,5 @@
 """
-Retry loop — port of src/retry/retry-loop.ts.
+Retry loop — run_with_retry and feedback helpers.
 """
 
 from __future__ import annotations

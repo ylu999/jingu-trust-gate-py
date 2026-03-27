@@ -1,5 +1,5 @@
 """
-Conflict annotator utilities — port of src/conflict/conflict-annotator.ts.
+Conflict annotator utilities.
 """
 
 from __future__ import annotations

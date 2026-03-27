@@ -1,7 +1,7 @@
 """
 Medical symptom assessment — health assistant policy for jingu-trust-gate.
 
-Port of examples/medical-symptom-policy.ts.
+Health assistant — medical symptom assessment policy.
 
 Gate rules:
   R1  grade=proven + no bound evidence          → MISSING_EVIDENCE       → reject

@@ -1,6 +1,6 @@
 """
 GatePolicy abstract base class — the interface every policy must implement.
-Port of src/types/policy.ts.
+GatePolicy abstract base class.
 """
 
 from __future__ import annotations

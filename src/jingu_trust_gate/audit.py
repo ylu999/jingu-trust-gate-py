@@ -1,5 +1,5 @@
 """
-Audit writer — port of src/audit/audit-log.ts and audit-entry.ts.
+Audit writer — append-only JSONL audit log.
 """
 
 from __future__ import annotations
