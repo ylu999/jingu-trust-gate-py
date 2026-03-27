@@ -41,6 +41,7 @@ from jingu_trust_gate import (
     AuditEntry,
     create_trust_gate,
 )
+from jingu_trust_gate.helpers import approve, reject, downgrade
 
 # ---------------------------------------------------------------------------
 # Import adapters from examples/
@@ -195,12 +196,7 @@ class MemoryPolicy(GatePolicy[MemoryClaim]):
 
         # Rule A: proven claim must have at least one evidence reference
         if unit.grade == "proven" and len(support_ids) == 0:
-            return UnitEvaluationResult(
-                kind="unit",
-                unit_id=unit.id,
-                decision="reject",
-                reason_code="MISSING_EVIDENCE",
-            )
+            return reject(unit.id, "MISSING_EVIDENCE")
 
         # Rule B: claim asserts a specific brand but evidence has no brand attribute
         if unit.attributes.get("has_brand"):
@@ -208,20 +204,9 @@ class MemoryPolicy(GatePolicy[MemoryClaim]):
                 s.attributes.get("brand") is not None for s in support_refs
             )
             if not evidence_has_brand:
-                return UnitEvaluationResult(
-                    kind="unit",
-                    unit_id=unit.id,
-                    decision="downgrade",
-                    reason_code="OVER_SPECIFIC_BRAND",
-                    new_grade="derived",
-                )
+                return downgrade(unit.id, "OVER_SPECIFIC_BRAND", "derived")
 
-        return UnitEvaluationResult(
-            kind="unit",
-            unit_id=unit.id,
-            decision="approve",
-            reason_code="OK",
-        )
+        return approve(unit.id)
 
     # Gate Step 4: cross-unit conflict detection
     def detect_conflicts(

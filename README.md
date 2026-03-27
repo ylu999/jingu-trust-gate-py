@@ -50,6 +50,7 @@ from jingu_trust_gate import (
     RetryFeedback, RenderContext, RetryContext,
     AuditEntry, AuditWriter,
 )
+from jingu_trust_gate.helpers import approve, reject
 
 @dataclass
 class MyClaim:
@@ -68,8 +69,8 @@ class MyPolicy(GatePolicy[MyClaim]):
 
     def evaluate_unit(self, uws, ctx):
         if uws.unit.grade == "proven" and not uws.support_ids:
-            return UnitEvaluationResult(unit_id=uws.unit.id, decision="reject", reason_code="MISSING_EVIDENCE")
-        return UnitEvaluationResult(unit_id=uws.unit.id, decision="approve", reason_code="OK")
+            return reject(uws.unit.id, "MISSING_EVIDENCE")
+        return approve(uws.unit.id)
 
     def detect_conflicts(self, units, pool):
         return []
@@ -160,26 +161,31 @@ The same mechanism works for any context that needs to constrain what an LLM or 
 Your `bind_support()` and `evaluate_unit()` filter and check by `source_type`. For example:
 
 ```python
+from jingu_trust_gate.helpers import approve, reject, downgrade, first_failing
+
 # Tool call gate: reject if no "explicit_request" in support
 def evaluate_unit(self, uws, ctx):
-    has_intent = any(s.source_type == "explicit_request" for s in uws.support_refs)
-    if not has_intent:
-        return UnitEvaluationResult(unit_id=uws.unit.id, decision="reject", reason_code="INTENT_NOT_ESTABLISHED")
-    ...
+    return first_failing([
+        None if any(s.source_type == "explicit_request" for s in uws.support_refs)
+             else reject(uws.unit.id, "INTENT_NOT_ESTABLISHED"),
+    ]) or approve(uws.unit.id)
 
 # Action gate: require "user_confirmation" for high-risk irreversible actions
 def evaluate_unit(self, uws, ctx):
-    if uws.unit.risk_level == "high" and not uws.unit.is_reversible:
-        confirmed = any(s.source_type == "user_confirmation" for s in uws.support_refs)
-        if not confirmed:
-            return UnitEvaluationResult(unit_id=uws.unit.id, decision="reject", reason_code="CONFIRM_REQUIRED")
-    ...
+    return first_failing([
+        reject(uws.unit.id, "CONFIRM_REQUIRED")
+        if uws.unit.risk_level == "high" and not uws.unit.is_reversible
+           and not any(s.source_type == "user_confirmation" for s in uws.support_refs)
+        else None,
+    ]) or approve(uws.unit.id)
 
 # Agent step gate: reject if required context not in support pool
 def evaluate_unit(self, uws, ctx):
-    if uws.unit.grade == "required" and not uws.support_ids:
-        return UnitEvaluationResult(unit_id=uws.unit.id, decision="reject", reason_code="MISSING_CONTEXT")
-    ...
+    return first_failing([
+        reject(uws.unit.id, "MISSING_CONTEXT")
+        if uws.unit.grade == "required" and not uws.support_ids
+        else None,
+    ]) or approve(uws.unit.id)
 ```
 
 See `examples/tool_call_policy.py`, `examples/action_gate_policy.py`, and `examples/agent_step_policy.py` for complete working implementations.
@@ -245,6 +251,11 @@ python examples/action_gate_policy.py
 The [TypeScript SDK](https://github.com/ylu999/jingu-trust-gate) (`npm install jingu-trust-gate`) is the reference implementation. Both SDKs are API-compatible — the same `GatePolicy` design, same pipeline, same type names.
 
 ## Changelog
+
+### 0.1.9
+- `jingu_trust_gate.helpers` module: `approve()`, `reject()`, `downgrade()` outcome builders; `first_failing()` combinator; `has_support_type()`, `find_support_by_type()` etc. support queries; `empty_proposal_errors()`, `missing_id_errors()`, `missing_text_field_errors()` structure helpers; `hints_feedback()` feedback builder
+- All three agent/tool/action example policies refactored to use helpers — `evaluate_unit` now reads `first_failing([...checks]) or approve(id)` throughout
+- `ARCHITECTURE.md` added: three-layer model, mechanism vs semantics boundary, what helpers must not become
 
 ### 0.1.8
 - Three new example policies: `agent_step_policy.py` (research agent step gate), `tool_call_policy.py` (LLM tool call gate), `action_gate_policy.py` (irreversible action gate)
