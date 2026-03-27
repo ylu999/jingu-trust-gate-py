@@ -188,7 +188,7 @@ def evaluate_unit(self, uws, ctx):
     ]) or approve(uws.unit.id)
 ```
 
-See `examples/tool_call_policy.py`, `examples/action_gate_policy.py`, and `examples/agent_step_policy.py` for complete working implementations.
+See `examples/actions/tool_call_policy.py` and `examples/actions/action_gate_policy.py` for complete working implementations.
 
 ## Adapters
 
@@ -216,28 +216,54 @@ Covers all 6 scenarios: happy path, missing evidence, over-specificity, conflict
 
 ## Examples
 
-Eight runnable domain policies in `examples/`. Five cover RAG/data grounding; three show the gate applied to agent steps, tool calls, and irreversible actions.
+Nine runnable domain policies in `examples/`, organized into four use-case categories.
+
+### answers/ — gate what the LLM claims in a response
 
 | File | Domain | Key reason codes |
 |------|--------|-----------------|
-| [`medical_symptom_policy.py`](examples/medical_symptom_policy.py) | Health assistant | `DIAGNOSIS_UNCONFIRMED`, `TREATMENT_NOT_ADVISED`, `OVER_CERTAIN` |
-| [`legal_contract_policy.py`](examples/legal_contract_policy.py) | Contract review | `TERM_NOT_IN_EVIDENCE`, `OVER_SPECIFIC_FIGURE`, `SCOPE_EXCEEDED` |
-| [`hpc_diagnostic_policy.py`](examples/hpc_diagnostic_policy.py) | GPU cluster SRE | `UNSUPPORTED_SEVERITY`, `UNSUPPORTED_SCOPE`, `OVER_SPECIFIC_METRIC` |
-| [`ecommerce_catalog_policy.py`](examples/ecommerce_catalog_policy.py) | Product chatbot | `UNSUPPORTED_FEATURE`, `OVER_SPECIFIC_STOCK`, `STOCK_CONFLICT` |
-| [`bi_analytics_policy.py`](examples/bi_analytics_policy.py) | BI assistant | `VALUE_MISMATCH`, `PERIOD_MISMATCH`, `DIMENSION_MISMATCH`, `METRIC_CONFLICT` |
-| [`agent_step_policy.py`](examples/agent_step_policy.py) | Research agent steps | `MISSING_CONTEXT`, `INSUFFICIENT_FINDINGS`, `WEAK_JUSTIFICATION`, `REDUNDANT_STEP` |
-| [`tool_call_policy.py`](examples/tool_call_policy.py) | LLM tool call gate | `REDUNDANT_CALL`, `INTENT_NOT_ESTABLISHED`, `WEAK_JUSTIFICATION`, `MISSING_EXPECTED_VALUE` |
-| [`action_gate_policy.py`](examples/action_gate_policy.py) | Irreversible action gate | `CONFIRM_REQUIRED`, `DESTRUCTIVE_WITHOUT_AUTHORIZATION`, `SCOPE_EXCEEDED`, `CONTRADICTORY_ACTIONS` |
+| [`answers/medical_symptom_policy.py`](examples/answers/medical_symptom_policy.py) | Health assistant | `DIAGNOSIS_UNCONFIRMED`, `TREATMENT_NOT_ADVISED`, `OVER_CERTAIN` |
+| [`answers/legal_contract_policy.py`](examples/answers/legal_contract_policy.py) | Contract review | `TERM_NOT_IN_EVIDENCE`, `OVER_SPECIFIC_FIGURE`, `SCOPE_EXCEEDED` |
+
+### actions/ — gate what the LLM agent is allowed to do
+
+| File | Domain | Key reason codes |
+|------|--------|-----------------|
+| [`actions/tool_call_policy.py`](examples/actions/tool_call_policy.py) | LLM tool call gate | `REDUNDANT_CALL`, `INTENT_NOT_ESTABLISHED`, `WEAK_JUSTIFICATION`, `MISSING_EXPECTED_VALUE` |
+| [`actions/action_gate_policy.py`](examples/actions/action_gate_policy.py) | Irreversible action gate | `CONFIRM_REQUIRED`, `DESTRUCTIVE_WITHOUT_AUTHORIZATION`, `SCOPE_EXCEEDED`, `CONTRADICTORY_ACTIONS` |
+
+### state/ — gate what the LLM is allowed to write into persistent state
+
+| File | Domain | Key reason codes |
+|------|--------|-----------------|
+| [`state/memory_update_policy.py`](examples/state/memory_update_policy.py) | Personal memory assistant | `SOURCE_UNVERIFIED`, `INFERRED_NOT_STATED`, `SCOPE_VIOLATION` |
+| [`state/fact_write_policy.py`](examples/state/fact_write_policy.py) | Knowledge base write gate | `UNSOURCED`, `OVER_SPECIFIC`, `LOW_CONFIDENCE_SOURCE`, `CONFLICTING_VALUES` |
+
+### integration/ — audit logging, retry loops, adapters
+
+| File | What it shows |
+|------|--------------|
+| [`integration/audit_writer_example.py`](examples/integration/audit_writer_example.py) | `FileAuditWriter` — JSONL audit log (Law 3) |
+| [`integration/downgrade_retry_example.py`](examples/integration/downgrade_retry_example.py) | `retry_on_decisions=["downgrade"]` — retry when claims are downgraded |
+| [`integration/adapter_examples.py`](examples/integration/adapter_examples.py) | `ContextAdapter` for Claude, OpenAI, Gemini |
 
 ```bash
-python examples/medical_symptom_policy.py
-python examples/legal_contract_policy.py
-python examples/hpc_diagnostic_policy.py
-python examples/ecommerce_catalog_policy.py
-python examples/bi_analytics_policy.py
-python examples/agent_step_policy.py
-python examples/tool_call_policy.py
-python examples/action_gate_policy.py
+# answers
+python examples/answers/medical_symptom_policy.py
+python examples/answers/legal_contract_policy.py
+
+# actions
+python examples/actions/tool_call_policy.py
+python examples/actions/action_gate_policy.py
+
+# state
+python examples/state/memory_update_policy.py
+python examples/state/fact_write_policy.py
+
+# integration
+python examples/integration/audit_writer_example.py
+python examples/integration/downgrade_retry_example.py
+python examples/integration/adapter_examples.py
 ```
 
 ## Three iron laws
@@ -251,6 +277,15 @@ python examples/action_gate_policy.py
 The [TypeScript SDK](https://github.com/ylu999/jingu-trust-gate) (`npm install jingu-trust-gate`) is the reference implementation. Both SDKs are API-compatible — the same `GatePolicy` design, same pipeline, same type names.
 
 ## Changelog
+
+### 0.1.10
+- Examples reorganized into four use-case categories: `answers/`, `actions/`, `state/`, `integration/`
+- Removed: `ecommerce_catalog_policy.py`, `hpc_diagnostic_policy.py`, `bi_analytics_policy.py`, `agent_step_policy.py` (overlapping patterns)
+- New: `state/memory_update_policy.py` — personal memory write gate (`SOURCE_UNVERIFIED`, `INFERRED_NOT_STATED`, `SCOPE_VIOLATION`)
+- New: `state/fact_write_policy.py` — KB fact write gate (`UNSOURCED`, `OVER_SPECIFIC`, `LOW_CONFIDENCE_SOURCE`, `CONFLICTING_VALUES`)
+- New: `integration/audit_writer_example.py` — `FileAuditWriter` usage and JSONL log verification (Law 3)
+- New: `integration/downgrade_retry_example.py` — `retry_on_decisions=["downgrade"]` pattern with `RetryFeedback` walkthrough
+- Each subdirectory has a `README.md` with mental model and use-case guide
 
 ### 0.1.9
 - `jingu_trust_gate.helpers` module: `approve()`, `reject()`, `downgrade()` outcome builders; `first_failing()` combinator; `has_support_type()`, `find_support_by_type()` etc. support queries; `empty_proposal_errors()`, `missing_id_errors()`, `missing_text_field_errors()` structure helpers; `hints_feedback()` feedback builder
