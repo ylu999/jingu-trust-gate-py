@@ -63,6 +63,10 @@ def build_audit_entry(
 
 
 def _entry_to_dict(entry: AuditEntry) -> dict:
+    # gate_results is intentionally excluded: it contains non-serializable
+    # dataclass instances (UnitEvaluationResult, StructureValidationResult, etc.)
+    # and raw conflict dicts. Callers needing full gate_results should implement
+    # a custom AuditWriter.
     return {
         "auditId": entry.audit_id,
         "timestamp": entry.timestamp,

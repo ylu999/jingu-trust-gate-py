@@ -28,11 +28,13 @@ class GatePolicy(ABC, Generic[TUnit]):
     """
     Policy interface — implement all 6 methods to define admission logic.
 
-    The gate engine calls these methods in order:
+    GateRunner calls methods 1–4 in order on every admission run:
       1. validate_structure  — proposal-level structural check
       2. bind_support        — which SupportRefs apply to this unit
       3. evaluate_unit       — unit-level semantic evaluation
       4. detect_conflicts    — cross-unit conflict detection
+
+    TrustGate calls the remaining methods as needed:
       5. render              — admitted units → VerifiedContext for LLM input
       6. build_retry_feedback — structured feedback when gate rejects units
     """

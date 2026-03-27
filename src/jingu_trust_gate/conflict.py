@@ -5,7 +5,7 @@ Conflict annotator utilities.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from .types import AdmittedUnit, ConflictAnnotation
 
@@ -13,7 +13,7 @@ from .types import AdmittedUnit, ConflictAnnotation
 @dataclass
 class ConflictSurface:
     unit_id: str
-    status: str  # "approved_with_conflict"
+    status: Literal["approved_with_conflict"]
     conflict_code: str
     conflicting_support_ids: list[str]
     description: Optional[str] = None

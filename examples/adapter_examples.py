@@ -22,7 +22,7 @@ from jingu_trust_gate.types import VerifiedBlock, VerifiedContext
 
 @dataclass
 class ClaudeSearchResultBlock:
-    """Claude API search_result block shape (SearchResultBlockParam)."""
+    """Simplified representation of a Claude API search_result block."""
     type: str = "search_result"
     source: str = ""
     title: str = ""
