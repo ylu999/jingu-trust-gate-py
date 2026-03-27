@@ -175,6 +175,26 @@ python examples/bi_analytics_policy.py
 
 The [TypeScript SDK](https://github.com/ylu999/jingu-trust-gate) (`npm install jingu-trust-gate`) is the reference implementation. Both SDKs are API-compatible — the same `GatePolicy` design, same pipeline, same type names.
 
+## Changelog
+
+### 0.1.6
+- Code quality audit across all source files: fixed stale comments, corrected caller attribution in `GatePolicy` docstrings, improved type precision (`Literal["approved_with_conflict"]`)
+- Fixed `approved_count` double-counting `approved_with_conflict` units in audit log
+- `AuditEntry.downgrade_count` renamed to `downgraded_count`; JSONL key updated to `"downgradedCount"` (aligns with TypeScript SDK)
+- Added `demo/demo.py` — narrative walkthrough of all 6 scenarios mirroring the TypeScript demo
+
+### 0.1.5
+- Adapter implementations (Claude, OpenAI, Gemini) moved from core to `examples/adapter_examples.py`; only `ContextAdapter` interface remains in the public API
+- README rewritten with full quick start, GatePolicy interface table, examples table, adapters section
+
+### 0.1.4
+- Five example domain policies: medical, legal, HPC, e-commerce, BI analytics
+
+### 0.1.3
+- Initial public release
+- Full retry loop with typed `RetryFeedback`
+- File audit writer (append-only JSONL)
+
 ## License
 
 MIT
