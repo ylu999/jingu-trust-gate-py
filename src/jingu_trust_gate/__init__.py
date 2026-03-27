@@ -3,6 +3,10 @@ jingu-trust-gate — deterministic trust gate for LLM systems.
 Python SDK: pip install jingu-trust-gate
 """
 
+from .adapters import ClaudeContextAdapter, ClaudeAdapterOptions, ClaudeSearchResultBlock, OpenAIContextAdapter, OpenAIAdapterOptions, OpenAIChatMessage, GeminiContextAdapter, GeminiAdapterOptions, GeminiContent, ContextAdapter
+from .conflict import ConflictSurface, surface_conflicts, group_conflicts_by_code, has_conflicts
+from .renderer import BaseRenderer
+
 from .audit import AuditEntry, AuditWriter, FileAuditWriter, create_default_audit_writer
 from .trust_gate import TrustGate, TrustGateConfig, create_trust_gate
 from .policy import GatePolicy
@@ -60,4 +64,25 @@ __all__ = [
     "AuditWriter",
     "FileAuditWriter",
     "create_default_audit_writer",
+]
+
+# Adapters
+__all__ += [
+    "ContextAdapter",
+    "ClaudeContextAdapter",
+    "ClaudeAdapterOptions",
+    "ClaudeSearchResultBlock",
+    "OpenAIContextAdapter",
+    "OpenAIAdapterOptions",
+    "OpenAIChatMessage",
+    "GeminiContextAdapter",
+    "GeminiAdapterOptions",
+    "GeminiContent",
+    # Conflict utils
+    "ConflictSurface",
+    "surface_conflicts",
+    "group_conflicts_by_code",
+    "has_conflicts",
+    # Renderer
+    "BaseRenderer",
 ]
