@@ -65,18 +65,27 @@ Thin functions that eliminate repetitive boilerplate across policy implementatio
 
 ### Layer 3 — Reference policies (`examples/`)
 
-Complete, runnable `GatePolicy` implementations for real domains. These are templates for users to read and adapt, not components to import.
+Complete, runnable `GatePolicy` implementations for real domains. These are templates for users to read and adapt, not components to import. Organized into four use-case categories:
+
+```
+examples/
+  answers/     — gate what the LLM claims in a response
+  actions/     — gate what the LLM agent is allowed to do
+  state/       — gate what the LLM is allowed to write into persistent state
+  integration/ — audit logging, retry loops, LLM API adapters
+```
 
 | File | Domain |
 |------|--------|
-| `medical_symptom_policy.py` | Health assistant — diagnosis/treatment gate |
-| `legal_contract_policy.py` | Contract review — term/figure/right grounding |
-| `hpc_diagnostic_policy.py` | GPU cluster SRE — severity/scope/metric gate |
-| `ecommerce_catalog_policy.py` | Product chatbot — feature/stock/conflict gate |
-| `bi_analytics_policy.py` | BI assistant — value/period/dimension gate |
-| `agent_step_policy.py` | Research agent — context/findings/redundancy gate |
-| `tool_call_policy.py` | LLM tool calls — intent/redundancy/justification gate |
-| `action_gate_policy.py` | Irreversible actions — authorization/confirmation/conflict gate |
+| `answers/medical_symptom_policy.py` | Health assistant — diagnosis/treatment gate |
+| `answers/legal_contract_policy.py` | Contract review — term/figure/right grounding |
+| `actions/tool_call_policy.py` | LLM tool calls — intent/redundancy/justification gate |
+| `actions/action_gate_policy.py` | Irreversible actions — authorization/confirmation/conflict gate |
+| `state/memory_update_policy.py` | Personal memory — user-statement grounding |
+| `state/fact_write_policy.py` | Knowledge base — source grounding before storage |
+| `integration/audit_writer_example.py` | FileAuditWriter — JSONL audit log (Law 3) |
+| `integration/downgrade_retry_example.py` | retry_on_decisions — retry loop on downgrade |
+| `integration/adapter_examples.py` | ContextAdapter for Claude, OpenAI, Gemini |
 
 ## The boundary principle
 
